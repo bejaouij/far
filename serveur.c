@@ -29,17 +29,13 @@ int main() {
 	address.sin_addr.s_addr = INADDR_ANY;
 	address.sin_port = htons(32456);
 
-	int bindResult = bind(socketDescriptor, (struct sockaddr*)&address, sizeof(struct sockaddr_in));
-
-	if(bindResult == -1) {
+	if(bind(socketDescriptor, (struct sockaddr*)&address, sizeof(struct sockaddr_in)) == -1) {
 		perror("Socket Binding Error: ");
 	}
 	/********************/
 
 	/* Make server side socket listen connection request */
-	int listenResult = listen(socketDescriptor, 2);
-
-	if(listenResult == -1) {
+	if(listen(socketDescriptor, 2) == -1) {
 		perror("Socket Linstening Error: ");
 	}	
 	/********************/
@@ -122,9 +118,7 @@ int main() {
 	/********************/
 
 	/* Close the server side socket */
-	int socketClosing = close(socketDescriptor);
-
-	if(socketClosing == -1) {
+	if(close(socketDescriptor) == -1) {
 		perror("Socket Closing Error: ");
 	}
 	/********************/
