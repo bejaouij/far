@@ -76,34 +76,44 @@ int main() {
 				gatewayEstablished = 0;
 			}
 			else {
-				sendResult = send(clientSocketDescriptor2, &msg, sizeof(char)*((int)strlen(msg) + 1), 0);
-
-				if(sendResult == -1) {
-					perror("Data Sending Error: ");
+				if(strcmp(msg, "fin") == 0) {
+					gatewayEstablished = 0;
 				}
 				else {
-					if(sendResult == 0) {
-						gatewayEstablished = 0;
+					sendResult = send(clientSocketDescriptor2, &msg, sizeof(char)*((int)strlen(msg) + 1), 0);
+
+					if(sendResult == -1) {
+						perror("Data Sending Error: ");
 					}
 					else {
-						recvResult = recv(clientSocketDescriptor2, &msg, sizeof(char)*MESSAGE_MAX_LENGTH, 0);
-
-						if(recvResult == -1) {
-							perror("Data Reception Error: ");
+						if(sendResult == 0) {
+							gatewayEstablished = 0;
 						}
 						else {
-							if(recvResult == 0) {
-								gatewayEstablished = 0;
+							recvResult = recv(clientSocketDescriptor2, &msg, sizeof(char)*MESSAGE_MAX_LENGTH, 0);
+
+							if(recvResult == -1) {
+								perror("Data Reception Error: ");
 							}
 							else {
-								sendResult = send(clientSocketDescriptor, &msg, sizeof(char)*((int)strlen(msg) + 1), 0);
-
-								if(sendResult == -1) {
-									perror("Data Sending Error: ");
+								if(recvResult == 0) {
+									gatewayEstablished = 0;
 								}
 								else {
-									if(sendResult == 0) {
+									if(strcmp(msg, "fin") == 0) {
 										gatewayEstablished = 0;
+									}
+									else {
+										sendResult = send(clientSocketDescriptor, &msg, sizeof(char)*((int)strlen(msg) + 1), 0);
+
+										if(sendResult == -1) {
+											perror("Data Sending Error: ");
+										}
+										else {
+											if(sendResult == 0) {
+												gatewayEstablished = 0;
+											}
+										}
 									}
 								}
 							}
