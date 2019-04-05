@@ -44,24 +44,17 @@ int main() {
 	}	
 	/********************/
 
-	/* Accept the first client */
-	Client client1;
+	/* Accept two clients */
+	Client* clients[2] = {
+		&((Client) { .addressLength = sizeof(struct sockaddr_in) }),
+		&((Client) { .addressLength = sizeof(struct sockaddr_in) })
+	};
 
-	client1.addressLength = sizeof(struct sockaddr_in);
-	client1.socketDescriptor = accept(socketDescriptor, (struct sockaddr*)&client1.address, &client1.addressLength);
-
-	if(client1.socketDescriptor == -1) {
+	if((clients[0]->socketDescriptor = accept(socketDescriptor, (struct sockaddr*)&clients[0]->address, &clients[0]->addressLength)) == -1) {
 		perror("Socket Accepting Error: ");
 	}
-	/********************/
 
-	/* Accept the second client */
-	Client client2;
-
-	client2.addressLength = sizeof(struct sockaddr_in);
-	client2.socketDescriptor = accept(socketDescriptor, (struct sockaddr*)&client2.address, &client2.addressLength);
-
-	if(client2.socketDescriptor == -1) {
+	if((clients[1]->socketDescriptor = accept(socketDescriptor, (struct sockaddr*)&clients[1]->address, &clients[1]->addressLength)) == -1) {
 		perror("Socket Accepting Error: ");
 	}
 	/********************/
@@ -72,7 +65,7 @@ int main() {
 	int gatewayEstablished = 1;
 
 	while(gatewayEstablished == 1) {
-		recvResult = recv(client1.socketDescriptor, &msg, sizeof(char)*MESSAGE_MAX_LENGTH, 0);
+		recvResult = recv(clients[0]->socketDescriptor, &msg, sizeof(char)*MESSAGE_MAX_LENGTH, 0);
 
 		if(recvResult == -1) {
 			perror("Data Reception Error: ");
@@ -86,7 +79,7 @@ int main() {
 					gatewayEstablished = 0;
 				}
 				else {
-					sendResult = send(client2.socketDescriptor, &msg, sizeof(char)*((int)strlen(msg) + 1), 0);
+					sendResult = send(clients[1]->socketDescriptor, &msg, sizeof(char)*((int)strlen(msg) + 1), 0);
 
 					if(sendResult == -1) {
 						perror("Data Sending Error: ");
@@ -96,7 +89,7 @@ int main() {
 							gatewayEstablished = 0;
 						}
 						else {
-							recvResult = recv(client2.socketDescriptor, &msg, sizeof(char)*MESSAGE_MAX_LENGTH, 0);
+							recvResult = recv(clients[1]->socketDescriptor, &msg, sizeof(char)*MESSAGE_MAX_LENGTH, 0);
 
 							if(recvResult == -1) {
 								perror("Data Reception Error: ");
@@ -110,7 +103,7 @@ int main() {
 										gatewayEstablished = 0;
 									}
 									else {
-										sendResult = send(client1.socketDescriptor, &msg, sizeof(char)*((int)strlen(msg) + 1), 0);
+										sendResult = send(clients[0]->socketDescriptor, &msg, sizeof(char)*((int)strlen(msg) + 1), 0);
 
 										if(sendResult == -1) {
 											perror("Data Sending Error: ");
@@ -130,19 +123,19 @@ int main() {
 		}
 
 		if(gatewayEstablished == 0) {
-			if(close(client1.socketDescriptor) == -1) {
+			if(close(clients[0]->socketDescriptor) == -1) {
 				perror("Client 1 Socket Closing Error: ");
 			}
 
-			if(close(client2.socketDescriptor) == -1) {
+			if(close(clients[1]->socketDescriptor) == -1) {
 				perror("Client 2 Socket Closing Error: ");
 			}
 
-			if((client1.socketDescriptor = accept(socketDescriptor, (struct sockaddr*)&client1.address, &client1.addressLength)) == -1) {
+			if((clients[0]->socketDescriptor = accept(socketDescriptor, (struct sockaddr*)&clients[0]->address, &clients[0]->addressLength)) == -1) {
 				perror("Client 1 Socket Accepting Error: ");
 			}
 
-			if((client2.socketDescriptor = accept(socketDescriptor, (struct sockaddr*)&client2.address, &client2.addressLength)) == -1) {
+			if((clients[1]->socketDescriptor = accept(socketDescriptor, (struct sockaddr*)&clients[1]->address, &clients[1]->addressLength)) == -1) {
 				perror("Client 2 Socket Accepting Error: ");
 			}
 
