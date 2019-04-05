@@ -30,7 +30,7 @@ int main() {
 	}
 	/********************/
 
-	/* Make server side socket listen connexion request */
+	/* Make server side socket listen connection request */
 	int listenResult = listen(socketDescriptor, 2);
 
 	if(listenResult == -1) {
