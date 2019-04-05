@@ -6,6 +6,7 @@
 #include <netinet/ip.h>
 
 int main() {
+	/* Initialize the server side socket */
 	int socketDescriptor = socket(PF_INET, SOCK_STREAM, 0);
 
 	if(socketDescriptor == -1) {
@@ -23,13 +24,17 @@ int main() {
 	if(bindResult == -1) {
 		perror("Socket Binding Error: ");
 	}
+	/********************/
 
+	/* Make server side socket listen connexion request */
 	int listenResult = listen(socketDescriptor, 2);
 
 	if(listenResult == -1) {
 		perror("Socket Linstening Error: ");
-	}
+	}	
+	/********************/
 
+	/* Accept the first client */
 	struct sockaddr_in clientAddress;
 	socklen_t clientAddressLength = sizeof(struct sockaddr_in);
 
@@ -38,12 +43,15 @@ int main() {
 	if(clientSocketDescriptor == -1) {
 		perror("Socket Accepting Error: ");
 	}
+	/********************/
 
+	/* Close the server side socket */
 	int socketClosing = close(socketDescriptor);
 
 	if(socketClosing == -1) {
 		perror("Socket Closing Error: ");
 	}
+	/********************/
 
 	return 0;
 }
