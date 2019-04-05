@@ -45,6 +45,17 @@ int main() {
 	}
 	/********************/
 
+	/* Accept the second client */
+	struct sockaddr_in clientAddress2;
+	socklen_t clientAddressLength2 = sizeof(struct sockaddr_in);
+
+	int clientSocketDescriptor2 = accept(socketDescriptor, (struct sockaddr*)&clientAddress2, &clientAddressLength2);
+
+	if(clientSocketDescriptor2 == -1) {
+		perror("Socket Accepting Error: ");
+	}
+	/********************/
+
 	/* Close the server side socket */
 	int socketClosing = close(socketDescriptor);
 
