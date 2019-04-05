@@ -9,6 +9,12 @@
 
 #define MESSAGE_MAX_LENGTH 255
 
+typedef struct Client {
+	struct sockaddr_in address;
+	socklen_t addressLength;
+	int socketDescriptor;
+} Client;
+
 int main() {
 	/* Initialize the server side socket */
 	int socketDescriptor = socket(PF_INET, SOCK_STREAM, 0);
@@ -39,23 +45,23 @@ int main() {
 	/********************/
 
 	/* Accept the first client */
-	struct sockaddr_in clientAddress;
-	socklen_t clientAddressLength = sizeof(struct sockaddr_in);
+	Client client1;
 
-	int clientSocketDescriptor = accept(socketDescriptor, (struct sockaddr*)&clientAddress, &clientAddressLength);
+	client1.addressLength = sizeof(struct sockaddr_in);
+	client1.socketDescriptor = accept(socketDescriptor, (struct sockaddr*)&client1.address, &client1.addressLength);
 
-	if(clientSocketDescriptor == -1) {
+	if(client1.socketDescriptor == -1) {
 		perror("Socket Accepting Error: ");
 	}
 	/********************/
 
 	/* Accept the second client */
-	struct sockaddr_in clientAddress2;
-	socklen_t clientAddressLength2 = sizeof(struct sockaddr_in);
+	Client client2;
 
-	int clientSocketDescriptor2 = accept(socketDescriptor, (struct sockaddr*)&clientAddress2, &clientAddressLength2);
+	client2.addressLength = sizeof(struct sockaddr_in);
+	client2.socketDescriptor = accept(socketDescriptor, (struct sockaddr*)&client2.address, &client2.addressLength);
 
-	if(clientSocketDescriptor2 == -1) {
+	if(client2.socketDescriptor == -1) {
 		perror("Socket Accepting Error: ");
 	}
 	/********************/
@@ -66,7 +72,7 @@ int main() {
 	int gatewayEstablished = 1;
 
 	while(gatewayEstablished == 1) {
-		recvResult = recv(clientSocketDescriptor, &msg, sizeof(char)*MESSAGE_MAX_LENGTH, 0);
+		recvResult = recv(client1.socketDescriptor, &msg, sizeof(char)*MESSAGE_MAX_LENGTH, 0);
 
 		if(recvResult == -1) {
 			perror("Data Reception Error: ");
@@ -80,7 +86,7 @@ int main() {
 					gatewayEstablished = 0;
 				}
 				else {
-					sendResult = send(clientSocketDescriptor2, &msg, sizeof(char)*((int)strlen(msg) + 1), 0);
+					sendResult = send(client2.socketDescriptor, &msg, sizeof(char)*((int)strlen(msg) + 1), 0);
 
 					if(sendResult == -1) {
 						perror("Data Sending Error: ");
@@ -90,7 +96,7 @@ int main() {
 							gatewayEstablished = 0;
 						}
 						else {
-							recvResult = recv(clientSocketDescriptor2, &msg, sizeof(char)*MESSAGE_MAX_LENGTH, 0);
+							recvResult = recv(client2.socketDescriptor, &msg, sizeof(char)*MESSAGE_MAX_LENGTH, 0);
 
 							if(recvResult == -1) {
 								perror("Data Reception Error: ");
@@ -104,7 +110,7 @@ int main() {
 										gatewayEstablished = 0;
 									}
 									else {
-										sendResult = send(clientSocketDescriptor, &msg, sizeof(char)*((int)strlen(msg) + 1), 0);
+										sendResult = send(client1.socketDescriptor, &msg, sizeof(char)*((int)strlen(msg) + 1), 0);
 
 										if(sendResult == -1) {
 											perror("Data Sending Error: ");
@@ -124,19 +130,19 @@ int main() {
 		}
 
 		if(gatewayEstablished == 0) {
-			if(close(clientSocketDescriptor) == -1) {
+			if(close(client1.socketDescriptor) == -1) {
 				perror("Client 1 Socket Closing Error: ");
 			}
 
-			if(close(clientSocketDescriptor2) == -1) {
+			if(close(client2.socketDescriptor) == -1) {
 				perror("Client 2 Socket Closing Error: ");
 			}
 
-			if((clientSocketDescriptor = accept(socketDescriptor, (struct sockaddr*)&clientAddress, &clientAddressLength)) == -1) {
+			if((client1.socketDescriptor = accept(socketDescriptor, (struct sockaddr*)&client1.address, &client1.addressLength)) == -1) {
 				perror("Client 1 Socket Accepting Error: ");
 			}
 
-			if((clientSocketDescriptor2 = accept(socketDescriptor, (struct sockaddr*)&clientAddress2, &clientAddressLength2)) == -1) {
+			if((client2.socketDescriptor = accept(socketDescriptor, (struct sockaddr*)&client2.address, &client2.addressLength)) == -1) {
 				perror("Client 2 Socket Accepting Error: ");
 			}
 
