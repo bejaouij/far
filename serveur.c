@@ -55,10 +55,31 @@ int main() {
 	}
 	/********************/
 
-	/* Make the gateway between both clients to make the communication works */
-	char msg[MESSAGE_MAX_LENGTH];
+	/* Inform the each client about its number */
 	int recvResult, sendResult;
 	int gatewayEstablished = 1;
+
+	if((recvResult = send(clients[0]->socketDescriptor, &((int) {1}), 1*sizeof(int), 0)) == -1) {
+		perror("Client Index Sending Error");
+	}
+	else {
+		if(recvResult == 0) {
+			gatewayEstablished = 0;
+		}
+	}
+
+	if((recvResult = send(clients[1]->socketDescriptor, &((int) {2}), 1*sizeof(int), 0)) == -1) {
+		perror("Client Index Sending Error");
+	}
+	else {
+		if(recvResult == 0) {
+			gatewayEstablished = 0;
+		}
+	}
+	/********************/
+
+	/* Make the gateway between both clients to make the communication works */
+	char msg[MESSAGE_MAX_LENGTH];
 	int targetIndex = 0;
 
 	while(1) {
@@ -109,6 +130,24 @@ int main() {
 
 			if((clients[1]->socketDescriptor = accept(socketDescriptor, (struct sockaddr*)&clients[1]->address, &clients[1]->addressLength)) == -1) {
 				perror("Client 2 Socket Accepting Error: ");
+			}
+
+			if((recvResult = send(clients[0]->socketDescriptor, &((int) {1}), 1*sizeof(int), 0)) == -1) {
+				perror("Client Index Sending Error");
+			}
+			else {
+				if(recvResult == 0) {
+					gatewayEstablished = 0;
+				}
+			}
+
+			if((recvResult = send(clients[1]->socketDescriptor, &((int) {2}), 1*sizeof(int), 0)) == -1) {
+				perror("Client Index Sending Error");
+			}
+			else {
+				if(recvResult == 0) {
+					gatewayEstablished = 0;
+				}
 			}
 
 			gatewayEstablished = 1;
