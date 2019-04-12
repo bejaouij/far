@@ -4,6 +4,11 @@ Chat application with several users and file transfer.
 
 ## Versions
 
+### 0.2.0
+
+* Client side program implementation.
+* Server side program implementation.
+
 ### 0.1.0
 
 Project initialization.
