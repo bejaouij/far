@@ -47,7 +47,7 @@ int main() {
 	int socketDescriptor = socket(PF_INET, SOCK_STREAM, 0);
 
 	if(socketDescriptor == -1) {
-		perror("Socket Creation Error: ");
+		perror("Socket Creation Error");
 	}
 
 	struct sockaddr_in address;
@@ -57,13 +57,13 @@ int main() {
 	address.sin_port = htons(32456);
 
 	if(bind(socketDescriptor, (struct sockaddr*)&address, sizeof(struct sockaddr_in)) == -1) {
-		perror("Socket Binding Error: ");
+		perror("Socket Binding Error");
 	}
 	/********************/
 
 	/* Make server side socket listen connection request */
 	if(listen(socketDescriptor, 2) == -1) {
-		perror("Socket Linstening Error: ");
+		perror("Socket Linstening Error");
 	}	
 	/********************/
 
@@ -91,7 +91,7 @@ int main() {
 		recvResult = recv(clients[targetIndex%2]->socketDescriptor, &msg, sizeof(char)*MESSAGE_MAX_LENGTH, 0);
 
 		if(recvResult == -1) {
-			perror("Data Reception Error: ");
+			perror("Data Reception Error");
 		}
 		else {
 			if(recvResult == 0) {
@@ -105,7 +105,7 @@ int main() {
 					sendResult = send(clients[(targetIndex + 1)%2]->socketDescriptor, &msg, sizeof(char)*((int)strlen(msg) + 1), 0);
 
 					if(sendResult == -1) {
-						perror("Data Sending Error: ");
+						perror("Data Sending Error");
 					}
 					else {
 						if(sendResult == 0) {
@@ -138,7 +138,7 @@ int main() {
 
 	/* Close the server side socket */
 	if(close(socketDescriptor) == -1) {
-		perror("Socket Closing Error: ");
+		perror("Socket Closing Error");
 	}
 	/********************/
 
