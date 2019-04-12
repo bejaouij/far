@@ -15,6 +15,33 @@ typedef struct Client {
 	int socketDescriptor;
 } Client;
 
+/* Array(Client*) x int -> int
+ * 
+ * Close connection with all clients specified in parameters
+ *
+ * @pre: 'clientsCount' must be equal to the number of clients stored in the array.
+ * @post: All client sockets must be closed.
+ * @param: - clients: Array which contains all clients to disconnect.
+ *         - clientsCount: Number of clients stored in 'clients' array.
+ * @return: - 0 if everything is okay
+ *          - -1 if something goes wrong
+ */
+int closeConnection(Client* clients[], int clientsCount);
+
+/* Array(Client*) x int -> int
+ * 
+ * Init connection with all clients specified in parameters
+ *
+ * @pre: 'clientsCount' must be equal to the number of clients stored in the array.
+ * @post: All client sockets must be connected to the gateway.
+ * @param: - clients: Array which contains all clients to disconnect.
+ *         - clientsCount: Number of clients stored in 'clients' array.
+ *         - gatewaySocketDescriptor: Descriptor of server socket.
+ * @return: - 0 if everything is okay
+ *          - -1 if something goes wrong
+ */
+int initConnection(Client* clients[], int clientsCount, int gatewaySocketDescriptor);
+
 int main() {
 	/* Initialize the server side socket */
 	int socketDescriptor = socket(PF_INET, SOCK_STREAM, 0);
@@ -41,45 +68,23 @@ int main() {
 	/********************/
 
 	/* Accept two clients */
+	int gatewayEstablished = 0;
+
 	Client* clients[2] = {
 		&((Client) { .addressLength = sizeof(struct sockaddr_in) }),
 		&((Client) { .addressLength = sizeof(struct sockaddr_in) })
 	};
 
-	if((clients[0]->socketDescriptor = accept(socketDescriptor, (struct sockaddr*)&clients[0]->address, &clients[0]->addressLength)) == -1) {
-		perror("Socket Accepting Error: ");
-	}
-
-	if((clients[1]->socketDescriptor = accept(socketDescriptor, (struct sockaddr*)&clients[1]->address, &clients[1]->addressLength)) == -1) {
-		perror("Socket Accepting Error: ");
-	}
-	/********************/
-
-	/* Inform the each client about its number */
-	int recvResult, sendResult;
-	int gatewayEstablished = 1;
-
-	if((recvResult = send(clients[0]->socketDescriptor, &((int) {1}), 1*sizeof(int), 0)) == -1) {
-		perror("Client Index Sending Error");
-	}
-	else {
-		if(recvResult == 0) {
-			gatewayEstablished = 0;
-		}
-	}
-
-	if((recvResult = send(clients[1]->socketDescriptor, &((int) {2}), 1*sizeof(int), 0)) == -1) {
-		perror("Client Index Sending Error");
-	}
-	else {
-		if(recvResult == 0) {
-			gatewayEstablished = 0;
+	while(gatewayEstablished == 0) {
+		if(initConnection(clients, 2, socketDescriptor) == 0) {
+			gatewayEstablished = 1;
 		}
 	}
 	/********************/
 
 	/* Make the gateway between both clients to make the communication works */
 	char msg[MESSAGE_MAX_LENGTH];
+	int recvResult, sendResult;
 	int targetIndex = 0;
 
 	while(1) {
@@ -115,43 +120,18 @@ int main() {
 		targetIndex = (targetIndex + 1)%2;
 		/********************/
 
-		if(gatewayEstablished == 0) {
-			if(close(clients[0]->socketDescriptor) == -1) {
-				perror("Client 1 Socket Closing Error: ");
+		while(gatewayEstablished == 0) {
+			if(closeConnection(clients, 2) == 0) {
+				gatewayEstablished = 1;
 			}
-
-			if(close(clients[1]->socketDescriptor) == -1) {
-				perror("Client 2 Socket Closing Error: ");
-			}
-
-			if((clients[0]->socketDescriptor = accept(socketDescriptor, (struct sockaddr*)&clients[0]->address, &clients[0]->addressLength)) == -1) {
-				perror("Client 1 Socket Accepting Error: ");
-			}
-
-			if((clients[1]->socketDescriptor = accept(socketDescriptor, (struct sockaddr*)&clients[1]->address, &clients[1]->addressLength)) == -1) {
-				perror("Client 2 Socket Accepting Error: ");
-			}
-
-			if((recvResult = send(clients[0]->socketDescriptor, &((int) {1}), 1*sizeof(int), 0)) == -1) {
-				perror("Client Index Sending Error");
-			}
-			else {
-				if(recvResult == 0) {
-					gatewayEstablished = 0;
+			
+			if(gatewayEstablished == 1) {
+				if(initConnection(clients, 2, socketDescriptor) == 0) {
+					gatewayEstablished = 1;
 				}
+				
+				targetIndex = 0;
 			}
-
-			if((recvResult = send(clients[1]->socketDescriptor, &((int) {2}), 1*sizeof(int), 0)) == -1) {
-				perror("Client Index Sending Error");
-			}
-			else {
-				if(recvResult == 0) {
-					gatewayEstablished = 0;
-				}
-			}
-
-			gatewayEstablished = 1;
-			targetIndex = 0;
 		}
 	}
 	/********************/
@@ -161,6 +141,45 @@ int main() {
 		perror("Socket Closing Error: ");
 	}
 	/********************/
+
+	return 0;
+}
+
+int closeConnection(Client* clients[], int clientsCount) {
+	int i;
+
+	for(i = 0; i < clientsCount; i++) {
+		if(close(clients[i]->socketDescriptor) == -1) {
+			perror("Client Socket Closing Error");
+			return -1;
+		}
+	}
+
+	return 0;
+}
+
+int initConnection(Client* clients[], int clientsCount, int gatewaySocketDescriptor) {
+	int i;
+	int sendResult = 0;
+
+	for(i = 0; i < clientsCount; i++) {
+		if((clients[i]->socketDescriptor = accept(gatewaySocketDescriptor, (struct sockaddr*)&(clients[i]->address), &(clients[i]->addressLength))) == -1) {
+			perror("Client Socket Accepting Error");
+			return -1;
+		}
+	}
+
+	for(i = 0; i < clientsCount; i++) {
+		if((sendResult = send(clients[i]->socketDescriptor, &((int) {(i+1)}), 1*sizeof(int), 0)) == -1) {
+			perror("Client Index Sending Error");
+			return -1;
+		}
+		else {
+			if(sendResult == 0) {
+				return -1;
+			}
+		}
+	}
 
 	return 0;
 }
