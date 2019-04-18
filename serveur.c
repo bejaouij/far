@@ -6,6 +6,7 @@
 #include <netinet/in.h>
 #include <netinet/ip.h>
 #include <unistd.h>
+#include <pthread.h>
 
 #define MESSAGE_MAX_LENGTH 255
 
@@ -14,6 +15,12 @@ typedef struct Client {
 	socklen_t addressLength;
 	int socketDescriptor;
 } Client;
+
+typedef struct MessageTransmissionParams {
+	int serverSocketDescriptor;
+	Client* senderClient;
+	Client* recipientClient;
+} MessageTransmissionParams;
 
 /* Array(Client*) x int -> int
  * 
@@ -41,6 +48,16 @@ int closeConnection(Client* clients[], int clientsCount);
  *          - -1 if something goes wrong
  */
 int initConnection(Client* clients[], int clientsCount, int gatewaySocketDescriptor);
+
+/* *MessageTransmissionParams -> Any
+ *
+ * Transmit message from client 1 to client 2.
+ *
+ * @param: - params: structure which store all functio parameters.
+ * @return: - 0 if everything is okay
+ *          - -1 if something goes wrong
+ */
+void* t_messageTransmission(struct MessageTransmissionParams* params);
 
 int main() {
 	/* Initialize the server side socket */
@@ -79,6 +96,36 @@ int main() {
 		if(initConnection(clients, 2, socketDescriptor) == 0) {
 			gatewayEstablished = 1;
 		}
+	}
+	/********************/
+
+	/* Initialize clients communication threads  */
+	pthread_t thread1;
+	pthread_t thread2;
+
+	pthread_t* threads[2] = {
+		&thread1,
+		&thread2
+	};
+
+	int resThreadCreation = pthread_create(threads[0], NULL, (void*) t_messageTransmission, &((MessageTransmissionParams) {
+				.serverSocketDescriptor = socketDescriptor,
+				.senderClient = clients[0],
+				.recipientClient = clients[1]
+			}));
+
+	if(resThreadCreation != 0) {
+		perror("Thread Creation Error");
+	}
+
+	resThreadCreation = pthread_create(threads[1], NULL, (void*) t_messageTransmission, &((MessageTransmissionParams) {
+				.serverSocketDescriptor = socketDescriptor,
+				.senderClient = clients[1],
+				.recipientClient = clients[0]
+			}));
+
+	if(resThreadCreation != 0) {
+		perror("Thread Creation Error");
 	}
 	/********************/
 
@@ -182,4 +229,45 @@ int initConnection(Client* clients[], int clientsCount, int gatewaySocketDescrip
 	}
 
 	return 0;
+}
+
+
+void* t_messageTransmission(struct MessageTransmissionParams* params) {
+	char msg[MESSAGE_MAX_LENGTH];
+	int connectionEstablished = 1;
+	int recvRes, sendRes;
+
+	while(connectionEstablished == 1) {
+		if((recvRes = recv(params->senderClient->socketDescriptor, &msg, sizeof(char)*MESSAGE_MAX_LENGTH, 0)) == -1) {
+			perror("Message Reception Error");
+		}
+		else {
+			if(recvRes == 0) {
+				connectionEstablished = 0;
+			}
+			else {
+				if(strcmp(msg, "fin") == 0) {
+					connectionEstablished = 0;
+				}
+				else {
+					if((sendRes = send(params->recipientClient->socketDescriptor, &msg, sizeof(char)*((int)strlen(msg) + 1), 0)) == -1) {
+						perror("Message Sending Error");
+					}
+					else {
+						if(sendRes == 0) {
+							connectionEstablished = 0;
+						}
+					}
+				}
+			}
+		}
+	}
+
+	if(close(params->senderClient->socketDescriptor) == -1) {
+		perror("Client Socket Closing Error");
+	}
+
+	if(close(params->recipientClient->socketDescriptor) == -1) {
+		perror("Client Socket Closing Error");
+	}
 }
