@@ -11,6 +11,7 @@
 #define MESSAGE_MAX_LENGTH 255
 
 typedef struct Client {
+	int isConnected;
 	struct sockaddr_in address;
 	socklen_t addressLength;
 	int socketDescriptor;
@@ -73,8 +74,8 @@ int main() {
 
 	/* Initialize two clients */
 	Client* clients[2] = {
-		&((Client) { .addressLength = sizeof(struct sockaddr_in) }),
-		&((Client) { .addressLength = sizeof(struct sockaddr_in) })
+		&((Client) { .isConnected = 0, .addressLength = sizeof(struct sockaddr_in) }),
+		&((Client) { .isConnected = 0, .addressLength = sizeof(struct sockaddr_in) })
 	};
 	/********************/
 
@@ -154,6 +155,8 @@ int initConnection(Client* clients[], int clientsCount, int gatewaySocketDescrip
 			perror("Client Socket Accepting Error");
 			return -1;
 		}
+		
+		clients[i]->isConnected = 1;
 	}
 
 	return 0;
@@ -190,12 +193,19 @@ void* t_messageTransmission(struct MessageTransmissionParams* params) {
 			}
 		}
 	}
+	if(params->senderClient->isConnected == 1) {
+		if(close(params->senderClient->socketDescriptor) == -1) {
+			perror("Client Socket Closing Error");
+		}
 
-	if(close(params->senderClient->socketDescriptor) == -1) {
-		perror("Client Socket Closing Error");
+		params->senderClient->isConnected = 0;
 	}
 
-	if(close(params->recipientClient->socketDescriptor) == -1) {
-		perror("Client Socket Closing Error");
+	if(params->recipientClient->isConnected == 1) {
+		if(close(params->recipientClient->socketDescriptor) == -1) {
+			perror("Client Socket Closing Error");
+		}
+
+		params->recipientClient->isConnected = 0;
 	}
 }
