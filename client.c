@@ -7,6 +7,25 @@
 #include <errno.h>
 #include <unistd.h>
 #include <arpa/inet.h>
+#include <pthread.h>
+
+#define MESSAGE_MAX_LENGTH 256
+
+/* &Int -> Any
+ *
+ * Reception messages thread routine.
+ *
+ * @param: - socketDescriptor: Descriptor of the server socket.
+ */
+void* t_recvMessages(int* socketDescriptor);
+
+/* &Int -> Any
+ *
+ * Sending messages thread routine.
+ *
+ * @param: - socketDescriptor: Descriptor of the server socket.
+ */
+void* t_sendMessages(int* socketDescriptor);
 
 int main() {
 	/* Initialize the client side socket and connect it to the gateway */
@@ -31,79 +50,46 @@ int main() {
 	}
 	/********************/
 
-	int gatewayEstablished = 1;
+	/* Initialize server communication threads  */
+	pthread_t thread1;
+	pthread_t thread2;
 
-	/* Catch the client number */
-	int clientIndex;
-	int recvRes = recv(socketDescriptor, &clientIndex, 1*sizeof(int), 0);
-
-	if(recvRes == -1) {
-		perror("Message Reception Error");
-	}
-	else {
-		if(recvRes == 0) {
-			gatewayEstablished = 0;
-			printf("CONNECTION LOST\n");
-		}
-		else {
-			printf("CONNECTION ESTABLISHED\n");
-		}
-	}
-	/********************/
-
-	char msg[255];
-	int sendRes;
-	
-	/* If the client is second one of the gateway, first be in a listen
-	 * state to be syncronized with the first client */
-	if(clientIndex == 2) {
-		if((recvRes = recv(socketDescriptor, &msg, 255, 0)) == -1) {
-			perror("Message Reception Error");
-		}
-		else {
-			if(recvRes == 0) {
-				gatewayEstablished = 0;
-				printf("CONNECTION LOST\n");
-			}
-			else {
-				printf("Recipient: %s\n", msg);
-			}
-		}
-	}
+	pthread_t* threads[2] = {
+		&thread1,
+		&thread2
+	};
 	/********************/
 
 	/* While the gateway is established, send and recieve message to the gateway */
-	while(gatewayEstablished == 1) {
-		printf("You: ");	
-		fgets(msg, 255, stdin);
-        	*strchr(msg, '\n') = '\0'; /* Remove the end of line character */
+	int gatewayEstablished = 1;
+	int resThreadCreation;
 
-		if((sendRes = send(socketDescriptor, &msg, strlen(msg) + 1, 0)) == -1) {
-			perror("Message Sending Error");
+	if((resThreadCreation = pthread_create(threads[0], NULL, (void*) &t_recvMessages, &socketDescriptor)) != 0) {
+		perror("Thread Creation Error");
+		gatewayEstablished = 0;
+	}
+
+	if((resThreadCreation = pthread_create(threads[1], NULL, (void*) &t_sendMessages, &socketDescriptor)) != 0) {
+		perror("Thread Creation Error");
+		gatewayEstablished = 0;
+	}
+
+	if(gatewayEstablished == 1) {
+		/* Stop sending messages routine when the recieve messages
+		 * routine is finished */
+		printf("COMMUNICATION ESTABLISHED\n");
+
+		if(pthread_join(*threads[0], 0) != 0) {
+			perror("End Thread Error");
 		}
-		else {
-			if(sendRes == 0) {
-				gatewayEstablished = 0;
-				printf("\nCONNECTION LOST\n");
-			}
-			else {
-				if((recvRes = recv(socketDescriptor, &msg, 255*sizeof(char), 0)) == -1) {
-					perror("Message Reception Error");
-				}
-				else {
-					if(recvRes == 0) {
-						gatewayEstablished = 0;
-						printf("CONNECTION LOST\n");
-					}
-					else {
-						printf("Recipient: %s\n", msg);
-					}
-				}
-			}
+
+		if(pthread_cancel(*threads[1]) != 0) {
+			perror("Thread Canceling error");
 		}
+		/********************/
 	}
 	/********************/
-
+	
 	/* Close the server side socket */
         if(close(socketDescriptor) == -1) {
 		perror("Socket Closing Error");
@@ -113,4 +99,51 @@ int main() {
 	/********************/
 
         return 0;
+}
+
+void* t_recvMessages(int* socketDescriptor) {
+	int gatewayEstablished = 1;
+	int recvRes;
+	char buffer[MESSAGE_MAX_LENGTH];
+
+	while(gatewayEstablished == 1) {
+		if((recvRes = recv(*socketDescriptor, &buffer, sizeof(char)*MESSAGE_MAX_LENGTH, 0)) == -1) {
+			perror("Message Reception Error");
+			printf("COMMUNICATION LOST");
+			gatewayEstablished = 0;
+		}
+		else {
+			if(recvRes == 0) {
+				gatewayEstablished = 0;
+				printf("\nCOMMUNICATION LOST\n");
+			}
+			else {
+				printf("Recipient: %s\n", buffer);
+			}
+		}
+	}
+}
+
+void* t_sendMessages(int* socketDescriptor) {
+	int gatewayEstablished = 1;
+	int sendRes;
+	char buffer[MESSAGE_MAX_LENGTH];
+
+	while(gatewayEstablished == 1) {
+		fgets(buffer, 255, stdin);
+		*strchr(buffer, '\n') = '\0'; /* Remove the end of line character */
+		printf("You: %s\n", buffer);
+
+		if((sendRes = send(*socketDescriptor, &buffer, sizeof(char)*strlen(buffer) + 1, 0)) == -1) {
+			perror("Message Sending Error");
+			printf("\nCOMMUNICATION LOST\n");
+			gatewayEstablished = 0;
+		}
+		else {
+			if(sendRes == 0) {
+				gatewayEstablished = 0;
+				printf("\nCOMMUNICATION LOST\n");
+			}
+		}
+	}
 }
