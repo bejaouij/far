@@ -45,6 +45,18 @@ int initConnection(Client* clients[], int clientsCount, int gatewaySocketDescrip
  * @return: - 0 if everything is okay
  *          - -1 if something goes wrong
  */
+
+/* &Client -> int
+ *
+ * Close specified client connection.
+ *
+ * @params: client: Client to disconnect.
+ * @return: - 0 if everything is okay.
+ *          - 1 if the client was already disconnected.
+ *          - -1 if something goes wrong.
+ */
+int closeClientConnection(Client* client);
+
 void* t_messageTransmission(struct MessageTransmissionParams* params);
 
 int main() {
@@ -162,6 +174,21 @@ int initConnection(Client* clients[], int clientsCount, int gatewaySocketDescrip
 	return 0;
 }
 
+int closeClientConnection(Client* client) {
+	if(client->isConnected == 1) {
+		if(close(client->socketDescriptor) == -1) {
+			perror("Client Socket Closing Error");
+			return -1;
+		}
+
+		client->isConnected = 0;
+	}
+	else {
+		return 1;
+	}
+
+	return 0;
+}
 
 void* t_messageTransmission(struct MessageTransmissionParams* params) {
 	char msg[MESSAGE_MAX_LENGTH];
@@ -171,6 +198,7 @@ void* t_messageTransmission(struct MessageTransmissionParams* params) {
 	while(connectionEstablished == 1) {
 		if((recvRes = recv(params->senderClient->socketDescriptor, &msg, sizeof(char)*MESSAGE_MAX_LENGTH, 0)) == -1) {
 			perror("Message Reception Error");
+			connectionEstablished = 0;
 		}
 		else {
 			if(recvRes == 0) {
@@ -193,19 +221,7 @@ void* t_messageTransmission(struct MessageTransmissionParams* params) {
 			}
 		}
 	}
-	if(params->senderClient->isConnected == 1) {
-		if(close(params->senderClient->socketDescriptor) == -1) {
-			perror("Client Socket Closing Error");
-		}
 
-		params->senderClient->isConnected = 0;
-	}
-
-	if(params->recipientClient->isConnected == 1) {
-		if(close(params->recipientClient->socketDescriptor) == -1) {
-			perror("Client Socket Closing Error");
-		}
-
-		params->recipientClient->isConnected = 0;
-	}
+	while(closeClientConnection(params->senderClient) == -1) {}
+	while(closeClientConnection(params->recipientClient) == -1) {}
 }
