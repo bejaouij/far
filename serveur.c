@@ -7,6 +7,7 @@
 #include <netinet/ip.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <stdlib.h>
 
 #define MESSAGE_MAX_LENGTH 255
 #define CLIENTS_MAX_COUNT 50
@@ -17,7 +18,7 @@ typedef struct Client {
 	struct sockaddr_in address;
 	socklen_t addressLength;
 	int socketDescriptor;
-	pthread_t* messagesReceptionThread;
+	pthread_t messagesReceptionThread;
 } Client;
 
 typedef struct Gateway {
@@ -31,29 +32,6 @@ typedef struct MessageTransmissionParams {
 	Gateway* gateway;
 } MessageTransmissionParams;
 
-/* Array(Client*) x int -> int
- * 
- * Init connection with all clients specified in parameters
- *
- * @pre: 'clientsCount' must be equal to the number of clients stored in the array.
- * @post: All client sockets must be connected to the gateway.
- * @param: - clients: Array which contains all clients to disconnect.
- *         - clientsCount: Number of clients stored in 'clients' array.
- *         - gatewaySocketDescriptor: Descriptor of server socket.
- * @return: - 0 if everything is okay
- *          - -1 if something goes wrong
- */
-int initConnection(Client* clients[], int clientsCount, int gatewaySocketDescriptor);
-
-/* *MessageTransmissionParams -> Any
- *
- * Transmit message from client 1 to client 2.
- *
- * @param: - params: structure which store all functio parameters.
- * @return: - 0 if everything is okay
- *          - -1 if something goes wrong
- */
-
 /* &Client -> int
  *
  * Close specified client connection.
@@ -65,6 +43,14 @@ int initConnection(Client* clients[], int clientsCount, int gatewaySocketDescrip
  */
 int closeClientConnection(Client* client);
 
+/* *MessageTransmissionParams -> Any
+ *
+ * Transmit message from client 1 to client 2.
+ *
+ * @param: - params: structure which store all function parameters.
+ * @return: - 0 if everything is okay
+ *          - -1 if something goes wrong
+ */
 void* t_messageTransmission(struct MessageTransmissionParams* params);
 
 int main() {
@@ -94,66 +80,36 @@ int main() {
 	}	
 	/********************/
 
-	/* Initialize two clients */
-	gateway.clients[0] = &((Client) { .isConnected = 0, .index = 0, .addressLength = sizeof(struct sockaddr_in) });
-	gateway.clients[1] = &((Client) { .isConnected = 0, .index = 1, .addressLength = sizeof(struct sockaddr_in) });
-	/********************/
-
-	gateway.clientsCount = 2;
-
-	/* Initialize clients communication threads  */
-	pthread_t thread1;
-	pthread_t thread2;
-
-	pthread_t* threads[2] = {
-		&thread1,
-		&thread2
-	};
-	/********************/
-
 	/* Make the gateway between both clients to make the communication works */
 	int resThreadCreation;
-	int gatewayEstablished;
+	int i;
+	MessageTransmissionParams* params;
 
 	while(1) {
-		/* Accept two clients */
-		gatewayEstablished = 0;
+		i = gateway.clientsCount;
+		gateway.clients[i] = (Client*) malloc(sizeof(Client));
+		gateway.clients[i]->isConnected = 0;
+		gateway.clients[i]->index = i;
+		gateway.clients[i]->addressLength = sizeof(struct sockaddr_in);
 
-		while(gatewayEstablished == 0) {
-			if(initConnection(gateway.clients, 2, gateway.socketDescriptor) == 0) {
-				gatewayEstablished = 1;
-			}
+		if((gateway.clients[i]->socketDescriptor = accept(gateway.socketDescriptor, (struct sockaddr*)&(gateway.clients[i]->address), &(gateway.clients[i]->addressLength))) == -1) {
+			perror("Client Socket Accepting Error");
+			return -1;
 		}
-		/********************/
 
 		/* Start communication threads routine  */
-		resThreadCreation = pthread_create(threads[0], NULL, (void*) &t_messageTransmission, &((MessageTransmissionParams) {
-					.senderClient = gateway.clients[0],
-					.gateway = &gateway
-				}));
+		params = (MessageTransmissionParams*) malloc(sizeof(MessageTransmissionParams));
+		params->senderClient = gateway.clients[i];
+		params->gateway = &gateway;
+
+		resThreadCreation = pthread_create(&gateway.clients[i]->messagesReceptionThread, NULL, (void*) &t_messageTransmission, params);
 
 		if(resThreadCreation != 0) {
 			perror("Thread Creation Error");
 		}
 
-		resThreadCreation = pthread_create(threads[1], NULL, (void*) &t_messageTransmission, &((MessageTransmissionParams) {
-					.senderClient = gateway.clients[1],
-					.gateway = &gateway
-				}));
-
-		if(resThreadCreation != 0) {
-			perror("Thread Creation Error");
-		}
-		/********************/
-
-		/* Wait for the communication threds routine end */
-		if(pthread_join(*threads[0], 0) != 0) {
-			perror("End Thread Error");
-		}
-
-		if(pthread_join(*threads[1], 0) != 0) {
-			perror("End Thread Error");
-		}
+		gateway.clients[i]->isConnected = 1;
+		gateway.clientsCount++;
 		/********************/
 	}
 	/********************/
@@ -167,21 +123,6 @@ int main() {
 	return 0;
 }
 
-int initConnection(Client* clients[], int clientsCount, int gatewaySocketDescriptor) {
-	int i;
-
-	for(i = 0; i < clientsCount; i++) {
-		if((clients[i]->socketDescriptor = accept(gatewaySocketDescriptor, (struct sockaddr*)&(clients[i]->address), &(clients[i]->addressLength))) == -1) {
-			perror("Client Socket Accepting Error");
-			return -1;
-		}
-		
-		clients[i]->isConnected = 1;
-	}
-
-	return 0;
-}
-
 int closeClientConnection(Client* client) {
 	if(client->isConnected == 1) {
 		if(close(client->socketDescriptor) == -1) {
@@ -190,6 +131,7 @@ int closeClientConnection(Client* client) {
 		}
 
 		client->isConnected = 0;
+		free(client);
 	}
 	else {
 		return 1;
@@ -220,7 +162,7 @@ void* t_messageTransmission(struct MessageTransmissionParams* params) {
 				else {
 					i = 0;
 
-					while(i < params->gateway->clientsCount) {
+					while(i < (params->gateway->clientsCount)) {
 						if(i != params->senderClient->index) {
 							if((sendRes = send(params->gateway->clients[i]->socketDescriptor, &msg, sizeof(char)*((int)strlen(msg) + 1), 0)) == -1) {
 								perror("Message Sending Error");
@@ -240,4 +182,6 @@ void* t_messageTransmission(struct MessageTransmissionParams* params) {
 	}
 
 	while(closeClientConnection(params->senderClient) == -1) {}
+
+	free(params);
 }
