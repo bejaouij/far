@@ -9,12 +9,14 @@
 #include <pthread.h>
 
 #define MESSAGE_MAX_LENGTH 255
+#define CLIENTS_MAX_COUNT 50
 
 typedef struct Client {
 	int isConnected;
 	struct sockaddr_in address;
 	socklen_t addressLength;
 	int socketDescriptor;
+	pthread_t* messagesReceptionThread;
 } Client;
 
 typedef struct MessageTransmissionParams {
@@ -22,6 +24,12 @@ typedef struct MessageTransmissionParams {
 	Client* senderClient;
 	Client* recipientClient;
 } MessageTransmissionParams;
+
+typedef struct Gateway {
+	int socketDescriptor;
+	int clientsCount;
+	Client* clients[CLIENTS_MAX_COUNT];
+} Gateway;
 
 /* Array(Client*) x int -> int
  * 
@@ -61,9 +69,11 @@ void* t_messageTransmission(struct MessageTransmissionParams* params);
 
 int main() {
 	/* Initialize the server side socket */
-	int socketDescriptor = socket(PF_INET, SOCK_STREAM, 0);
+	Gateway gateway;
+	gateway.clientsCount = 0:
+	gateway.socketDescriptor = socket(PF_INET, SOCK_STREAM, 0);
 
-	if(socketDescriptor == -1) {
+	if(gateway.socketDescriptor == -1) {
 		perror("Socket Creation Error");
 	}
 
@@ -73,22 +83,20 @@ int main() {
 	address.sin_addr.s_addr = INADDR_ANY;
 	address.sin_port = htons(32456);
 
-	if(bind(socketDescriptor, (struct sockaddr*)&address, sizeof(struct sockaddr_in)) == -1) {
+	if(bind(gateway.socketDescriptor, (struct sockaddr*)&address, sizeof(struct sockaddr_in)) == -1) {
 		perror("Socket Binding Error");
 	}
 	/********************/
 
 	/* Make server side socket listen connection request */
-	if(listen(socketDescriptor, 2) == -1) {
+	if(listen(gateway.socketDescriptor, 2) == -1) {
 		perror("Socket Linstening Error");
 	}	
 	/********************/
 
 	/* Initialize two clients */
-	Client* clients[2] = {
-		&((Client) { .isConnected = 0, .addressLength = sizeof(struct sockaddr_in) }),
-		&((Client) { .isConnected = 0, .addressLength = sizeof(struct sockaddr_in) })
-	};
+	gateway.clients[0] = &((Client) { .isConnected = 0, .addressLength = sizeof(struct sockaddr_in) });
+	gateway.clients[1] = &((Client) { .isConnected = 0, .addressLength = sizeof(struct sockaddr_in) });
 	/********************/
 
 	/* Initialize clients communication threads  */
@@ -110,7 +118,7 @@ int main() {
 		gatewayEstablished = 0;
 
 		while(gatewayEstablished == 0) {
-			if(initConnection(clients, 2, socketDescriptor) == 0) {
+			if(initConnection(gateway.clients, 2, gateway.socketDescriptor) == 0) {
 				gatewayEstablished = 1;
 			}
 		}
@@ -118,9 +126,9 @@ int main() {
 
 		/* Start communication threads routine  */
 		resThreadCreation = pthread_create(threads[0], NULL, (void*) &t_messageTransmission, &((MessageTransmissionParams) {
-					.serverSocketDescriptor = socketDescriptor,
-					.senderClient = clients[0],
-					.recipientClient = clients[1]
+					.serverSocketDescriptor = gateway.socketDescriptor,
+					.senderClient = gateway.clients[0],
+					.recipientClient = gateway.clients[1]
 				}));
 
 		if(resThreadCreation != 0) {
@@ -128,9 +136,9 @@ int main() {
 		}
 
 		resThreadCreation = pthread_create(threads[1], NULL, (void*) &t_messageTransmission, &((MessageTransmissionParams) {
-					.serverSocketDescriptor = socketDescriptor,
-					.senderClient = clients[1],
-					.recipientClient = clients[0]
+					.serverSocketDescriptor = gateway.socketDescriptor,
+					.senderClient = gateway.clients[1],
+					.recipientClient = gateway.clients[0]
 				}));
 
 		if(resThreadCreation != 0) {
@@ -151,7 +159,7 @@ int main() {
 	/********************/
 
 	/* Close the server side socket */
-	if(close(socketDescriptor) == -1) {
+	if(close(gateway.socketDescriptor) == -1) {
 		perror("Socket Closing Error");
 	}
 	/********************/
