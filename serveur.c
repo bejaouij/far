@@ -13,23 +13,23 @@
 
 typedef struct Client {
 	int isConnected;
+	int index;
 	struct sockaddr_in address;
 	socklen_t addressLength;
 	int socketDescriptor;
 	pthread_t* messagesReceptionThread;
 } Client;
 
-typedef struct MessageTransmissionParams {
-	int serverSocketDescriptor;
-	Client* senderClient;
-	Client* recipientClient;
-} MessageTransmissionParams;
-
 typedef struct Gateway {
 	int socketDescriptor;
 	int clientsCount;
 	Client* clients[CLIENTS_MAX_COUNT];
 } Gateway;
+
+typedef struct MessageTransmissionParams {
+	Client* senderClient;
+	Gateway* gateway;
+} MessageTransmissionParams;
 
 /* Array(Client*) x int -> int
  * 
@@ -70,7 +70,7 @@ void* t_messageTransmission(struct MessageTransmissionParams* params);
 int main() {
 	/* Initialize the server side socket */
 	Gateway gateway;
-	gateway.clientsCount = 0:
+	gateway.clientsCount = 0;
 	gateway.socketDescriptor = socket(PF_INET, SOCK_STREAM, 0);
 
 	if(gateway.socketDescriptor == -1) {
@@ -95,9 +95,11 @@ int main() {
 	/********************/
 
 	/* Initialize two clients */
-	gateway.clients[0] = &((Client) { .isConnected = 0, .addressLength = sizeof(struct sockaddr_in) });
-	gateway.clients[1] = &((Client) { .isConnected = 0, .addressLength = sizeof(struct sockaddr_in) });
+	gateway.clients[0] = &((Client) { .isConnected = 0, .index = 0, .addressLength = sizeof(struct sockaddr_in) });
+	gateway.clients[1] = &((Client) { .isConnected = 0, .index = 1, .addressLength = sizeof(struct sockaddr_in) });
 	/********************/
+
+	gateway.clientsCount = 2;
 
 	/* Initialize clients communication threads  */
 	pthread_t thread1;
@@ -126,9 +128,8 @@ int main() {
 
 		/* Start communication threads routine  */
 		resThreadCreation = pthread_create(threads[0], NULL, (void*) &t_messageTransmission, &((MessageTransmissionParams) {
-					.serverSocketDescriptor = gateway.socketDescriptor,
 					.senderClient = gateway.clients[0],
-					.recipientClient = gateway.clients[1]
+					.gateway = &gateway
 				}));
 
 		if(resThreadCreation != 0) {
@@ -136,9 +137,8 @@ int main() {
 		}
 
 		resThreadCreation = pthread_create(threads[1], NULL, (void*) &t_messageTransmission, &((MessageTransmissionParams) {
-					.serverSocketDescriptor = gateway.socketDescriptor,
 					.senderClient = gateway.clients[1],
-					.recipientClient = gateway.clients[0]
+					.gateway = &gateway
 				}));
 
 		if(resThreadCreation != 0) {
@@ -202,6 +202,7 @@ void* t_messageTransmission(struct MessageTransmissionParams* params) {
 	char msg[MESSAGE_MAX_LENGTH];
 	int connectionEstablished = 1;
 	int recvRes, sendRes;
+	int i;
 
 	while(connectionEstablished == 1) {
 		if((recvRes = recv(params->senderClient->socketDescriptor, &msg, sizeof(char)*MESSAGE_MAX_LENGTH, 0)) == -1) {
@@ -217,13 +218,21 @@ void* t_messageTransmission(struct MessageTransmissionParams* params) {
 					connectionEstablished = 0;
 				}
 				else {
-					if((sendRes = send(params->recipientClient->socketDescriptor, &msg, sizeof(char)*((int)strlen(msg) + 1), 0)) == -1) {
-						perror("Message Sending Error");
-					}
-					else {
-						if(sendRes == 0) {
-							connectionEstablished = 0;
+					i = 0;
+
+					while(i < params->gateway->clientsCount) {
+						if(i != params->senderClient->index) {
+							if((sendRes = send(params->gateway->clients[i]->socketDescriptor, &msg, sizeof(char)*((int)strlen(msg) + 1), 0)) == -1) {
+								perror("Message Sending Error");
+							}
+							else {
+								if(sendRes == 0) {
+									connectionEstablished = 0;
+								}
+							}
 						}
+
+						i++;
 					}
 				}
 			}
@@ -231,5 +240,4 @@ void* t_messageTransmission(struct MessageTransmissionParams* params) {
 	}
 
 	while(closeClientConnection(params->senderClient) == -1) {}
-	while(closeClientConnection(params->recipientClient) == -1) {}
 }
