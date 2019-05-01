@@ -43,6 +43,17 @@ typedef struct MessageTransmissionParams {
  */
 int closeClientConnection(Client* client);
 
+/* &Gateway x int -> int
+ *
+ * Remove the client from the gateway at the specified index.
+ *
+ * @params: - gateway: server inormation container.
+ *          - clientIndex: index of the client to remove.
+ * @return: - 0 if everything is okay.
+ *          - -1 if something goes wrong.
+ */
+int removeClient(Gateway* gateway, int clientIndex);
+
 /* *MessageTransmissionParams -> Any
  *
  * Transmit message from client 1 to client 2.
@@ -86,31 +97,40 @@ int main() {
 	MessageTransmissionParams* params;
 
 	while(1) {
-		i = gateway.clientsCount;
-		gateway.clients[i] = (Client*) malloc(sizeof(Client));
-		gateway.clients[i]->isConnected = 0;
-		gateway.clients[i]->index = i;
-		gateway.clients[i]->addressLength = sizeof(struct sockaddr_in);
+		if(gateway.clientsCount != CLIENTS_MAX_COUNT) {
+			i = gateway.clientsCount;
+			gateway.clients[i] = (Client*) malloc(sizeof(Client));
+			gateway.clients[i]->isConnected = 0;
+			gateway.clients[i]->index = i;
+			gateway.clients[i]->addressLength = sizeof(struct sockaddr_in);
 
-		if((gateway.clients[i]->socketDescriptor = accept(gateway.socketDescriptor, (struct sockaddr*)&(gateway.clients[i]->address), &(gateway.clients[i]->addressLength))) == -1) {
-			perror("Client Socket Accepting Error");
-			return -1;
+			if((gateway.clients[i]->socketDescriptor = accept(gateway.socketDescriptor, (struct sockaddr*)&(gateway.clients[i]->address), &(gateway.clients[i]->addressLength))) == -1) {
+				perror("Client Socket Accepting Error");
+				return -1;
+			}
+
+			/* Useful in the case where clients count value
+		 	 * has been changed during the accepting process. */
+			gateway.clients[gateway.clientsCount] = gateway.clients[i];
+			i = gateway.clientsCount;
+			gateway.clients[i]->index = i;
+			/********************/
+
+			/* Start communication threads routine  */
+			params = (MessageTransmissionParams*) malloc(sizeof(MessageTransmissionParams));
+			params->senderClient = gateway.clients[i];
+			params->gateway = &gateway;
+
+			resThreadCreation = pthread_create(&gateway.clients[i]->messagesReceptionThread, NULL, (void*) &t_messageTransmission, params);
+
+			if(resThreadCreation != 0) {
+				perror("Thread Creation Error");
+			}
+
+			gateway.clients[i]->isConnected = 1;
+			gateway.clientsCount++;
+			/********************/
 		}
-
-		/* Start communication threads routine  */
-		params = (MessageTransmissionParams*) malloc(sizeof(MessageTransmissionParams));
-		params->senderClient = gateway.clients[i];
-		params->gateway = &gateway;
-
-		resThreadCreation = pthread_create(&gateway.clients[i]->messagesReceptionThread, NULL, (void*) &t_messageTransmission, params);
-
-		if(resThreadCreation != 0) {
-			perror("Thread Creation Error");
-		}
-
-		gateway.clients[i]->isConnected = 1;
-		gateway.clientsCount++;
-		/********************/
 	}
 	/********************/
 
@@ -131,11 +151,35 @@ int closeClientConnection(Client* client) {
 		}
 
 		client->isConnected = 0;
-		free(client);
 	}
 	else {
 		return 1;
 	}
+
+	return 0;
+}
+
+int removeClient(Gateway* gateway, int clientIndex) {
+	/* Check whether the client index value is in the range */
+	if(clientIndex < 0 || clientIndex >= gateway->clientsCount) {
+		return -1;
+	}
+	/********************/
+
+	/* Free the client memory */
+	free(gateway->clients[clientIndex]);
+	/********************/
+
+	/* Remove the client from the array */
+	int i;
+
+	for(i = clientIndex; i < (gateway->clientsCount - 1); i++) {
+		gateway->clients[i] = gateway->clients[i + 1];
+		gateway->clients[i]->index--;
+	}
+
+	gateway->clientsCount--;
+	/********************/
 
 	return 0;
 }
@@ -182,6 +226,7 @@ void* t_messageTransmission(struct MessageTransmissionParams* params) {
 	}
 
 	while(closeClientConnection(params->senderClient) == -1) {}
+	while(removeClient(params->gateway, params->senderClient->index) == -1) {}
 
 	free(params);
 }
