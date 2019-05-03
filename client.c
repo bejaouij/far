@@ -207,7 +207,7 @@ void* t_recvMessages(int* socketDescriptor) {
 				printf("\nCOMMUNICATION LOST\n");
 			}
 			else {
-				printf("Recipient: %s\n", buffer);
+				printf("%s\n", buffer);
 			}
 		}
 	}

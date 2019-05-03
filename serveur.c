@@ -267,6 +267,7 @@ int nicknameAvailable(Client* client, Gateway* gateway) {
 }
 
 void* t_messageTransmission(struct MessageTransmissionParams* params) {
+	char sendingMsg[MESSAGE_MAX_LENGTH];
 	char msg[MESSAGE_MAX_LENGTH];
 	int connectionEstablished = 1;
 	int recvRes, sendRes;
@@ -286,11 +287,15 @@ void* t_messageTransmission(struct MessageTransmissionParams* params) {
 					connectionEstablished = 0;
 				}
 				else {
+					strcpy(sendingMsg, params->senderClient->nickname);
+					strcat(sendingMsg, ": ");
+					strcat(sendingMsg, msg);
+
 					i = 0;
 
 					while(i < (params->gateway->clientsCount)) {
 						if(i != params->senderClient->index) {
-							if((sendRes = send(params->gateway->clients[i]->socketDescriptor, &msg, sizeof(char)*((int)strlen(msg) + 1), 0)) == -1) {
+							if((sendRes = send(params->gateway->clients[i]->socketDescriptor, &sendingMsg, sizeof(char)*((int)strlen(sendingMsg) + 1), 0)) == -1) {
 								perror("Message Sending Error");
 							}
 							else {
