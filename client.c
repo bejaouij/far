@@ -8,8 +8,22 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <pthread.h>
+#include <regex.h>
 
 #define MESSAGE_MAX_LENGTH 256
+#define NICKNAME_MAX_LENGTH 15
+/* int -> int
+ *
+ * Trigger the nickname picking process once.
+ *
+ * @params: socketDescriptor: server side socket descriptor.
+ * @returns: - -1 if the nickname is too long.
+ *           - -2 if the nickname has a wrong format.
+ *           - -3 if the nickname is already taken in the gateway.
+ *           - 1 if something goes wrong.
+ *           - 0 if everything is okay.
+ */
+int nicknamePicking(int socketDescriptor);
 
 /* &Int -> Any
  *
@@ -28,6 +42,8 @@ void* t_recvMessages(int* socketDescriptor);
 void* t_sendMessages(int* socketDescriptor);
 
 int main() {
+	int gatewayEstablished = 1;
+
 	/* Initialize the client side socket and connect it to the gateway */
         int socketDescriptor = socket(PF_INET, SOCK_STREAM, 0);
 
@@ -50,7 +66,31 @@ int main() {
 	}
 	/********************/
 
+	/* Nickname picking */
+	int nicknameFeedback;
+
+	do {
+		nicknameFeedback = nicknamePicking(socketDescriptor);
+
+		switch(nicknameFeedback) {
+			case 1:
+				gatewayEstablished = 0;
+				break;
+			case -1:
+				printf("Your nickname cannot exceed %i characters.\n", NICKNAME_MAX_LENGTH);
+				break;
+			case -2:
+				printf("Your nickname can only contain alphanumeric characters ([a-z | A-Z | 0-9]).\n");
+				break;
+			case -3:
+				printf("This nickname is already taken.\n");
+				break;
+		}
+	} while(nicknameFeedback != 0 && nicknameFeedback != 1);
+	/********************/
+
 	/* Initialize server communication threads  */
+	int resThreadCreation;
 	pthread_t thread1;
 	pthread_t thread2;
 
@@ -60,18 +100,16 @@ int main() {
 	};
 	/********************/
 
-	/* While the gateway is established, send and recieve message to the gateway */
-	int gatewayEstablished = 1;
-	int resThreadCreation;
+	if(gatewayEstablished == 1) {
+		if((resThreadCreation = pthread_create(threads[0], NULL, (void*) &t_recvMessages, &socketDescriptor)) != 0) {
+			perror("Thread Creation Error");
+			gatewayEstablished = 0;
+		}
 
-	if((resThreadCreation = pthread_create(threads[0], NULL, (void*) &t_recvMessages, &socketDescriptor)) != 0) {
-		perror("Thread Creation Error");
-		gatewayEstablished = 0;
-	}
-
-	if((resThreadCreation = pthread_create(threads[1], NULL, (void*) &t_sendMessages, &socketDescriptor)) != 0) {
-		perror("Thread Creation Error");
-		gatewayEstablished = 0;
+		if((resThreadCreation = pthread_create(threads[1], NULL, (void*) &t_sendMessages, &socketDescriptor)) != 0) {
+			perror("Thread Creation Error");
+			gatewayEstablished = 0;
+		}
 	}
 
 	if(gatewayEstablished == 1) {
@@ -99,6 +137,57 @@ int main() {
 	/********************/
 
         return 0;
+}
+
+int nicknamePicking(int socketDescriptor) {
+	int resSend, resRecv, nicknameFeedback;
+	char nickname[MESSAGE_MAX_LENGTH];
+	regex_t alphanumReg;
+
+	printf("Pick a nickname (type \"\\stop\" to cancel):\n");
+	fgets(nickname, (MESSAGE_MAX_LENGTH), stdin);
+	*strchr(nickname, '\n') = '\0';
+
+	if(strcmp("\\stop", nickname) == 0) {
+		return 1;
+	}
+
+	if(strlen(nickname) > NICKNAME_MAX_LENGTH) {
+		return -1;
+	}
+
+	if(regcomp(&alphanumReg, "^[[:alnum:]]+$", REG_EXTENDED) != 0) {
+		perror("Regex Compilation Error");
+		return 1;
+	}
+
+	if(regexec(&alphanumReg, nickname, 0, NULL, 0) == REG_NOMATCH) {
+		return -2;
+	}
+
+	if((resSend = send(socketDescriptor, &nickname, strlen(nickname)*sizeof(char), 0)) == -1) {
+		perror("Nickname Sending Error");
+		return 1;
+	}
+	else {
+		if(resSend == 0) {
+			return 1;
+		}
+		else {
+			if((resRecv = recv(socketDescriptor, &nicknameFeedback, 1*sizeof(int), 0)) == -1) {
+				perror("Nickname Feedback Reception Error");
+				return 1;
+			}
+			else {
+				if(resRecv == 0) {
+					return 1;
+				}
+				else {
+					return nicknameFeedback;
+				}
+			}
+		}
+	}
 }
 
 void* t_recvMessages(int* socketDescriptor) {

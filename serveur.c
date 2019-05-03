@@ -11,6 +11,7 @@
 
 #define MESSAGE_MAX_LENGTH 255
 #define CLIENTS_MAX_COUNT 50
+#define NICKNAME_MAX_LENGTH 15
 
 typedef struct Client {
 	int isConnected;
@@ -19,6 +20,7 @@ typedef struct Client {
 	socklen_t addressLength;
 	int socketDescriptor;
 	pthread_t messagesReceptionThread;
+	char nickname[NICKNAME_MAX_LENGTH];
 } Client;
 
 typedef struct Gateway {
@@ -53,6 +55,18 @@ int closeClientConnection(Client* client);
  *          - -1 if something goes wrong.
  */
 int removeClient(Gateway* gateway, int clientIndex);
+
+/* &Client x &Gateway -> int
+ *
+ * Check if the client nickname is available in the gateway.
+ *
+ * @params: - client: pointer to the client whose nickname is the one to check.
+ *          - gateway: pointer to the gateway where check.
+ * @returns: - 1 if the nickname is available.
+ *           - 0 if the nickname is not available.
+ *           - -1 if something goes wrong.
+ */
+int nicknameAvailable(Client* client, Gateway* gateway);
 
 /* *MessageTransmissionParams -> Any
  *
@@ -92,8 +106,8 @@ int main() {
 	/********************/
 
 	/* Make the gateway between both clients to make the communication works */
-	int resThreadCreation;
-	int i;
+	int resThreadCreation, nicknamePicked, gatewayEstablished, nicknameFeedback, resRecv, resSend, i;
+	char nickname[MESSAGE_MAX_LENGTH];
 	MessageTransmissionParams* params;
 
 	while(1) {
@@ -116,20 +130,66 @@ int main() {
 			gateway.clients[i]->index = i;
 			/********************/
 
-			/* Start communication threads routine  */
-			params = (MessageTransmissionParams*) malloc(sizeof(MessageTransmissionParams));
-			params->senderClient = gateway.clients[i];
-			params->gateway = &gateway;
+			/* Nickname picking */
+			nicknamePicked = 0;
+			gatewayEstablished = 1;
+			nicknameFeedback = 0;
 
-			resThreadCreation = pthread_create(&gateway.clients[i]->messagesReceptionThread, NULL, (void*) &t_messageTransmission, params);
+			while(nicknamePicked == 0 && gatewayEstablished == 1) {
+				if((resRecv = recv(gateway.clients[i]->socketDescriptor, &nickname, sizeof(char)*MESSAGE_MAX_LENGTH, 0)) == -1) {
+					perror("Nickname Reception Error");
+					gatewayEstablished = 0;
+				}
+				else {
+					if(resRecv == 0) {
+						gatewayEstablished = 0;
+					}
+					else {
+						strcpy(gateway.clients[i]->nickname, nickname);
 
-			if(resThreadCreation != 0) {
-				perror("Thread Creation Error");
+						if(nicknameAvailable(gateway.clients[i], &gateway) == 1) {
+							nicknamePicked = 1;
+							nicknameFeedback = 0;
+						}
+						else {
+							nicknamePicked = 0;
+							nicknameFeedback = -3;
+						}
+
+						if((resSend = send(gateway.clients[i]->socketDescriptor, &nicknameFeedback, 1*sizeof(int), 0)) == -1) {
+							perror("Nickname Feedback Sending Error");
+							gatewayEstablished = 0;
+						}
+						else {
+							if(resSend == 0) {
+								gatewayEstablished = 0;
+							}
+						}
+					}
+				}
+
 			}
-
-			gateway.clients[i]->isConnected = 1;
-			gateway.clientsCount++;
 			/********************/
+
+			if(nicknamePicked == 1 && gatewayEstablished == 1) {
+				/* Start communication threads routine  */
+				params = (MessageTransmissionParams*) malloc(sizeof(MessageTransmissionParams));
+				params->senderClient = gateway.clients[i];
+				params->gateway = &gateway;
+
+				resThreadCreation = pthread_create(&gateway.clients[i]->messagesReceptionThread, NULL, (void*) &t_messageTransmission, params);
+
+				if(resThreadCreation != 0) {
+					perror("Thread Creation Error");
+				}
+
+				gateway.clients[i]->isConnected = 1;
+				gateway.clientsCount++;
+				/********************/
+			}
+			else {
+				removeClient(&gateway, i);
+			}
 		}
 	}
 	/********************/
@@ -182,6 +242,28 @@ int removeClient(Gateway* gateway, int clientIndex) {
 	/********************/
 
 	return 0;
+}
+
+int nicknameAvailable(Client* client, Gateway* gateway) {
+	int nicknameFound = 0;
+	int i = 0;
+
+	while(i <= gateway->clientsCount && nicknameFound == 0) {
+		if(client->index != i) {
+			if(strcmp(gateway->clients[i]->nickname, client->nickname) == 0) {
+				nicknameFound = 1;
+			}
+		}
+
+		i++;
+	}
+
+	if(nicknameFound == 1) {
+		return 0;
+	}
+	else {
+		return 1;
+	}
 }
 
 void* t_messageTransmission(struct MessageTransmissionParams* params) {
