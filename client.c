@@ -12,6 +12,13 @@
 
 #define MESSAGE_MAX_LENGTH 256
 #define NICKNAME_MAX_LENGTH 15
+
+#define GREEN_TEXT_COLOR_CODE "\x1b[32m"
+#define RED_TEXT_COLOR_CODE "\x1b[31m"
+#define CYAN_TEXT_COLOR_CODE "\x1b[36m"
+#define BRIGHT_BLUE_TEXT_COLOR_CODE "\x1b[94m"
+#define RESET_TEXT_COLOR_CODE "\x1b[0m"
+
 /* int -> int
  *
  * Trigger the nickname picking process once.
@@ -77,13 +84,13 @@ int main() {
 				gatewayEstablished = 0;
 				break;
 			case -1:
-				printf("Your nickname cannot exceed %i characters.\n", NICKNAME_MAX_LENGTH);
+				printf(RED_TEXT_COLOR_CODE "Your nickname cannot exceed %i characters.\n" RESET_TEXT_COLOR_CODE, NICKNAME_MAX_LENGTH);
 				break;
 			case -2:
-				printf("Your nickname can only contain alphanumeric characters ([a-z | A-Z | 0-9]).\n");
+				printf(RED_TEXT_COLOR_CODE "Your nickname can only contain alphanumeric characters ([a-z | A-Z | 0-9]).\n" RESET_TEXT_COLOR_CODE);
 				break;
 			case -3:
-				printf("This nickname is already taken.\n");
+				printf(RED_TEXT_COLOR_CODE "This nickname is already taken.\n" RESET_TEXT_COLOR_CODE);
 				break;
 		}
 	} while(nicknameFeedback != 0 && nicknameFeedback != 1);
@@ -115,7 +122,7 @@ int main() {
 	if(gatewayEstablished == 1) {
 		/* Stop sending messages routine when the recieve messages
 		 * routine is finished */
-		printf("COMMUNICATION ESTABLISHED\n");
+		printf(GREEN_TEXT_COLOR_CODE "COMMUNICATION ESTABLISHED\n" RESET_TEXT_COLOR_CODE);
 
 		if(pthread_join(*threads[0], 0) != 0) {
 			perror("End Thread Error");
@@ -133,7 +140,7 @@ int main() {
 		perror("Socket Closing Error");
 	}
 
-	printf("CONNECTION CLOSED\n");
+	printf(RED_TEXT_COLOR_CODE "CONNECTION CLOSED\n" RESET_TEXT_COLOR_CODE);
 	/********************/
 
         return 0;
@@ -198,16 +205,16 @@ void* t_recvMessages(int* socketDescriptor) {
 	while(gatewayEstablished == 1) {
 		if((recvRes = recv(*socketDescriptor, &buffer, sizeof(char)*MESSAGE_MAX_LENGTH, 0)) == -1) {
 			perror("Message Reception Error");
-			printf("COMMUNICATION LOST");
+			printf(RED_TEXT_COLOR_CODE "COMMUNICATION LOST" RESET_TEXT_COLOR_CODE);
 			gatewayEstablished = 0;
 		}
 		else {
 			if(recvRes == 0) {
 				gatewayEstablished = 0;
-				printf("\nCOMMUNICATION LOST\n");
+				printf(RED_TEXT_COLOR_CODE "\nCOMMUNICATION LOST\n" RESET_TEXT_COLOR_CODE);
 			}
 			else {
-				printf("%s\n", buffer);
+				printf(BRIGHT_BLUE_TEXT_COLOR_CODE "%s\n" RESET_TEXT_COLOR_CODE, buffer);
 			}
 		}
 	}
@@ -221,17 +228,17 @@ void* t_sendMessages(int* socketDescriptor) {
 	while(gatewayEstablished == 1) {
 		fgets(buffer, 255, stdin);
 		*strchr(buffer, '\n') = '\0'; /* Remove the end of line character */
-		printf("You: %s\n", buffer);
+		printf(CYAN_TEXT_COLOR_CODE "You: %s\n" RESET_TEXT_COLOR_CODE, buffer);
 
 		if((sendRes = send(*socketDescriptor, &buffer, sizeof(char)*strlen(buffer) + 1, 0)) == -1) {
-			perror("Message Sending Error");
+			perror(RED_TEXT_COLOR_CODE "Message Sending Error" RESET_TEXT_COLOR_CODE);
 			printf("\nCOMMUNICATION LOST\n");
 			gatewayEstablished = 0;
 		}
 		else {
 			if(sendRes == 0) {
 				gatewayEstablished = 0;
-				printf("\nCOMMUNICATION LOST\n");
+				printf(RED_TEXT_COLOR_CODE "\nCOMMUNICATION LOST\n" RESET_TEXT_COLOR_CODE);
 			}
 		}
 	}
