@@ -199,7 +199,7 @@ int removeClient(Gateway* gateway, int clientIndex) {
 
 	for(i = clientIndex; i < (gateway->clientsCount - 1); i++) {
 		gateway->clients[i] = gateway->clients[i + 1];
-		gateway->clients[i]->index--;
+		gateway->clients[i]->index = i;
 	}
 
 	gateway->clientsCount--;
@@ -212,7 +212,7 @@ int nicknameAvailable(Client* client, Gateway* gateway) {
 	int nicknameFound = 0;
 	int i = 0;
 
-	while(i <= gateway->clientsCount && nicknameFound == 0) {
+	while(i < gateway->clientsCount && nicknameFound == 0) {
 		if(client->index != i) {
 			if(strcmp(gateway->clients[i]->nickname, client->nickname) == 0) {
 				nicknameFound = 1;
@@ -235,10 +235,9 @@ void* t_nicknamePicking(NicknamePickingParams* params) {
 	int gatewayEstablished = 1;
 	int nicknameFeedback = 0;
 	int resThreadCreation, resRecv, resSend;
-	char nickname[MESSAGE_MAX_LENGTH];
 
 	while(nicknamePicked == 0 && gatewayEstablished == 1) {
-		if((resRecv = recv(params->senderClient->socketDescriptor, &nickname, sizeof(char)*MESSAGE_MAX_LENGTH, 0)) == -1) {
+		if((resRecv = recv(params->senderClient->socketDescriptor, &params->senderClient->nickname, sizeof(char)*MESSAGE_MAX_LENGTH, 0)) == -1) {
 			perror("Nickname Reception Error");
 			gatewayEstablished = 0;
 		}
@@ -247,8 +246,6 @@ void* t_nicknamePicking(NicknamePickingParams* params) {
 				gatewayEstablished = 0;
 			}
 			else {
-				strcpy(params->senderClient->nickname, nickname);
-
 				if(nicknameAvailable(params->senderClient, params->gateway) == 1) {
 					nicknamePicked = 1;
 					nicknameFeedback = 0;
@@ -318,7 +315,7 @@ void* t_messageTransmission(struct MessageTransmissionParams* params) {
 					i = 0;
 
 					while(i < (params->gateway->clientsCount)) {
-						if(i != params->senderClient->index) {
+						if(i != params->senderClient->index && params->gateway->clients[i]->isConnected == 1) {
 							if((sendRes = send(params->gateway->clients[i]->socketDescriptor, &sendingMsg, sizeof(char)*((int)strlen(sendingMsg) + 1), 0)) == -1) {
 								perror("Message Sending Error");
 							}

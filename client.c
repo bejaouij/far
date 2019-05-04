@@ -172,7 +172,7 @@ int nicknamePicking(int socketDescriptor) {
 		return -2;
 	}
 
-	if((resSend = send(socketDescriptor, &nickname, strlen(nickname)*sizeof(char), 0)) == -1) {
+	if((resSend = send(socketDescriptor, &nickname, (strlen(nickname)*sizeof(char) + 1), 0)) == -1) {
 		perror("Nickname Sending Error");
 		return 1;
 	}
