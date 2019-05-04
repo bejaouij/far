@@ -20,6 +20,7 @@ typedef struct Client {
 	socklen_t addressLength;
 	int socketDescriptor;
 	pthread_t messagesReceptionThread;
+	pthread_t nicknamePickingThread;
 	char nickname[NICKNAME_MAX_LENGTH];
 } Client;
 
@@ -32,7 +33,7 @@ typedef struct Gateway {
 typedef struct MessageTransmissionParams {
 	Client* senderClient;
 	Gateway* gateway;
-} MessageTransmissionParams;
+} MessageTransmissionParams, NicknamePickingParams;
 
 /* &Client -> int
  *
@@ -68,9 +69,19 @@ int removeClient(Gateway* gateway, int clientIndex);
  */
 int nicknameAvailable(Client* client, Gateway* gateway);
 
+/* *NicknamePickingParams -> Any
+ *
+ * Allow user to pick a nickname.
+ *
+ * @param: - params: structure which store all function parameters.
+ * @return: - 0 if everything is okay
+ *          - -1 if something goes wrong
+ */
+void* t_nicknamePicking(NicknamePickingParams* params);
+
 /* *MessageTransmissionParams -> Any
  *
- * Transmit message from client 1 to client 2.
+ * Broadcast client messages.
  *
  * @param: - params: structure which store all function parameters.
  * @return: - 0 if everything is okay
@@ -106,9 +117,9 @@ int main() {
 	/********************/
 
 	/* Make the gateway between both clients to make the communication works */
-	int resThreadCreation, nicknamePicked, gatewayEstablished, nicknameFeedback, resRecv, resSend, i;
-	char nickname[MESSAGE_MAX_LENGTH];
-	MessageTransmissionParams* params;
+	int resThreadCreation;
+	int i;
+	NicknamePickingParams* params;
 
 	while(1) {
 		if(gateway.clientsCount != CLIENTS_MAX_COUNT) {
@@ -130,66 +141,19 @@ int main() {
 			gateway.clients[i]->index = i;
 			/********************/
 
-			/* Nickname picking */
-			nicknamePicked = 0;
-			gatewayEstablished = 1;
-			nicknameFeedback = 0;
+			/* Start nickname picking thread routine */
+			params = (NicknamePickingParams*) malloc(sizeof(NicknamePickingParams));
+			params->senderClient = gateway.clients[i];
+			params->gateway = &gateway;
 
-			while(nicknamePicked == 0 && gatewayEstablished == 1) {
-				if((resRecv = recv(gateway.clients[i]->socketDescriptor, &nickname, sizeof(char)*MESSAGE_MAX_LENGTH, 0)) == -1) {
-					perror("Nickname Reception Error");
-					gatewayEstablished = 0;
-				}
-				else {
-					if(resRecv == 0) {
-						gatewayEstablished = 0;
-					}
-					else {
-						strcpy(gateway.clients[i]->nickname, nickname);
+			resThreadCreation = pthread_create(&gateway.clients[i]->nicknamePickingThread, NULL, (void*) &t_nicknamePicking, params);
 
-						if(nicknameAvailable(gateway.clients[i], &gateway) == 1) {
-							nicknamePicked = 1;
-							nicknameFeedback = 0;
-						}
-						else {
-							nicknamePicked = 0;
-							nicknameFeedback = -3;
-						}
-
-						if((resSend = send(gateway.clients[i]->socketDescriptor, &nicknameFeedback, 1*sizeof(int), 0)) == -1) {
-							perror("Nickname Feedback Sending Error");
-							gatewayEstablished = 0;
-						}
-						else {
-							if(resSend == 0) {
-								gatewayEstablished = 0;
-							}
-						}
-					}
-				}
-
+			if(resThreadCreation != 0) {
+				perror("Thread Creation Error");
 			}
+
+			gateway.clientsCount++;
 			/********************/
-
-			if(nicknamePicked == 1 && gatewayEstablished == 1) {
-				/* Start communication threads routine  */
-				params = (MessageTransmissionParams*) malloc(sizeof(MessageTransmissionParams));
-				params->senderClient = gateway.clients[i];
-				params->gateway = &gateway;
-
-				resThreadCreation = pthread_create(&gateway.clients[i]->messagesReceptionThread, NULL, (void*) &t_messageTransmission, params);
-
-				if(resThreadCreation != 0) {
-					perror("Thread Creation Error");
-				}
-
-				gateway.clients[i]->isConnected = 1;
-				gateway.clientsCount++;
-				/********************/
-			}
-			else {
-				removeClient(&gateway, i);
-			}
 		}
 	}
 	/********************/
@@ -263,6 +227,66 @@ int nicknameAvailable(Client* client, Gateway* gateway) {
 	}
 	else {
 		return 1;
+	}
+}
+
+void* t_nicknamePicking(NicknamePickingParams* params) {
+	int nicknamePicked = 0;
+	int gatewayEstablished = 1;
+	int nicknameFeedback = 0;
+	int resThreadCreation, resRecv, resSend;
+	char nickname[MESSAGE_MAX_LENGTH];
+
+	while(nicknamePicked == 0 && gatewayEstablished == 1) {
+		if((resRecv = recv(params->senderClient->socketDescriptor, &nickname, sizeof(char)*MESSAGE_MAX_LENGTH, 0)) == -1) {
+			perror("Nickname Reception Error");
+			gatewayEstablished = 0;
+		}
+		else {
+			if(resRecv == 0) {
+				gatewayEstablished = 0;
+			}
+			else {
+				strcpy(params->senderClient->nickname, nickname);
+
+				if(nicknameAvailable(params->senderClient, params->gateway) == 1) {
+					nicknamePicked = 1;
+					nicknameFeedback = 0;
+				}
+				else {
+					nicknamePicked = 0;
+					nicknameFeedback = -3;
+				}
+
+				if((resSend = send(params->senderClient->socketDescriptor, &nicknameFeedback, 1*sizeof(int), 0)) == -1) {
+					perror("Nickname Feedback Sending Error");
+					gatewayEstablished = 0;
+				}
+				else {
+					if(resSend == 0) {
+						gatewayEstablished = 0;
+					}
+				}
+			}
+		}
+
+	}
+
+	if(nicknamePicked == 1 && gatewayEstablished == 1) {
+		/* Start communication threads routine  */
+		resThreadCreation = pthread_create(&params->senderClient->messagesReceptionThread, NULL, (void*) &t_messageTransmission, params);
+
+		if(resThreadCreation != 0) {
+			perror("Thread Creation Error");
+		}
+
+		params->senderClient->isConnected = 1;
+		/********************/
+	}
+	else {
+		removeClient(params->gateway, params->senderClient->index);
+
+		free(params);
 	}
 }
 
