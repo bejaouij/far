@@ -4,6 +4,12 @@ Chat application with several users and file transfer.
 
 ## Versions
 
+### 0.3.0
+
+* Allow clients to pick a nickname.
+* Manage clients simultaneously.
+* Add colors to distinguish messages types.
+
 ### 0.2.0
 
 * Client side program implementation.
