@@ -134,7 +134,7 @@ int main() {
 		/********************/
 	}
 	/********************/
-	
+
 	/* Close the server side socket */
         if(close(socketDescriptor) == -1) {
 		perror("Socket Closing Error");
