@@ -9,9 +9,12 @@
 #include <arpa/inet.h>
 #include <pthread.h>
 #include <regex.h>
+#include <dirent.h>
 
 #define MESSAGE_MAX_LENGTH 256
 #define NICKNAME_MAX_LENGTH 15
+
+#define UPLOAD_FILES_DIR_PATH "medias/files/upload"
 
 #define GREEN_TEXT_COLOR_CODE "\x1b[32m"
 #define RED_TEXT_COLOR_CODE "\x1b[31m"
@@ -43,6 +46,13 @@ int nicknamePicking(int socketDescriptor);
  * Display the list of available commands.
  */
 void tcmd_help();
+
+/* void -> void
+ *
+ * Chat command.
+ * Allow you to pick a file to send to the gateway
+ */
+void tcmd_file();
 
 /* &Int -> Any
  *
@@ -214,6 +224,36 @@ int nicknamePicking(int socketDescriptor) {
 void tcmd_help() {
 	printf("\\help - Display the list of available commands.\n");
 	printf("\\stop - Disconnect you from the gateway.\n");
+	printf("\\file - Allow you to pick a file to send to the gateway.\n");
+}
+
+void tcmd_file() {
+	DIR* uploadDir;
+	struct dirent* entryUploadDir;
+
+	if((uploadDir = opendir(UPLOAD_FILES_DIR_PATH)) != NULL) {
+		int count = 0;
+
+		printf("Select a file to upload by typing its name:\n");
+
+		while((entryUploadDir = readdir(uploadDir)) != NULL ) {
+			count++;
+
+			if(strcmp(entryUploadDir->d_name, ".") != 0 && strcmp(entryUploadDir->d_name, "..")) {
+				printf("- %s\n", entryUploadDir->d_name);
+			}
+		}
+		/* If the folder contains only "." and ".." directory, consider it is empty. */
+		if(count == 2) {
+			printf("Your upload directory is empty.\n");
+		}
+		/********************/
+
+		closedir(uploadDir);
+	}
+	else {
+		printf(RED_TEXT_COLOR_CODE "Unable to open \"%s\" directory.\n" RESET_TEXT_COLOR_CODE, UPLOAD_FILES_DIR_PATH);
+	}
 }
 
 void* t_recvMessages(int* socketDescriptor) {
@@ -258,6 +298,9 @@ void* t_sendMessages(SendMessagesParams* params) {
 				if(pthread_cancel(*params->recvMessagesThread) != 0) {
 					perror("Thread Cancelling Error");
 				}
+			}
+			else if(strcmp(buffer, "\\file") == 0) {
+				tcmd_file();
 			}
 			else {
 				printf(RED_TEXT_COLOR_CODE "Command \"%s\" does not exist. Type \"\\help\" to access commands list.\n" RESET_TEXT_COLOR_CODE, buffer);
