@@ -19,6 +19,11 @@
 #define BRIGHT_BLUE_TEXT_COLOR_CODE "\x1b[94m"
 #define RESET_TEXT_COLOR_CODE "\x1b[0m"
 
+typedef struct SendMessagesParams {
+	int* socketDescriptor;
+	pthread_t* recvMessagesThread;
+} SendMessagesParams;
+
 /* int -> int
  *
  * Trigger the nickname picking process once.
@@ -47,13 +52,13 @@ void tcmd_help();
  */
 void* t_recvMessages(int* socketDescriptor);
 
-/* &Int -> Any
+/* &SendMessagesParams -> Any
  *
  * Sending messages thread routine.
  *
- * @param: - socketDescriptor: Descriptor of the server socket.
+ * @param: params: Structure which store function parameters.
  */
-void* t_sendMessages(int* socketDescriptor);
+void* t_sendMessages(SendMessagesParams* params);
 
 int main() {
 	int gatewayEstablished = 1;
@@ -105,6 +110,7 @@ int main() {
 
 	/* Initialize server communication threads  */
 	int resThreadCreation;
+	SendMessagesParams sendParams;
 	pthread_t thread1;
 	pthread_t thread2;
 
@@ -112,6 +118,9 @@ int main() {
 		&thread1,
 		&thread2
 	};
+
+	sendParams.socketDescriptor = &socketDescriptor;
+	sendParams.recvMessagesThread = threads[0];
 	/********************/
 
 	if(gatewayEstablished == 1) {
@@ -120,7 +129,7 @@ int main() {
 			gatewayEstablished = 0;
 		}
 
-		if((resThreadCreation = pthread_create(threads[1], NULL, (void*) &t_sendMessages, &socketDescriptor)) != 0) {
+		if((resThreadCreation = pthread_create(threads[1], NULL, (void*) &t_sendMessages, &sendParams)) != 0) {
 			perror("Thread Creation Error");
 			gatewayEstablished = 0;
 		}
@@ -135,9 +144,7 @@ int main() {
 			perror("End Thread Error");
 		}
 
-		if(pthread_cancel(*threads[1]) != 0) {
-			perror("Thread Canceling error");
-		}
+		pthread_cancel(*threads[1]);
 		/********************/
 	}
 	/********************/
@@ -232,7 +239,7 @@ void* t_recvMessages(int* socketDescriptor) {
 	}
 }
 
-void* t_sendMessages(int* socketDescriptor) {
+void* t_sendMessages(SendMessagesParams* params) {
 	int gatewayEstablished = 1;
 	int sendRes;
 	char buffer[MESSAGE_MAX_LENGTH];
@@ -247,6 +254,10 @@ void* t_sendMessages(int* socketDescriptor) {
 			}
 			else if(strcmp(buffer, "\\stop") == 0) {
 				gatewayEstablished = 0;
+
+				if(pthread_cancel(*params->recvMessagesThread) != 0) {
+					perror("Thread Cancelling Error");
+				}
 			}
 			else {
 				printf(RED_TEXT_COLOR_CODE "Command \"%s\" does not exist. Type \"\\help\" to access commands list.\n" RESET_TEXT_COLOR_CODE, buffer);
@@ -255,7 +266,7 @@ void* t_sendMessages(int* socketDescriptor) {
 		else {
 			printf(CYAN_TEXT_COLOR_CODE "You: %s\n" RESET_TEXT_COLOR_CODE, buffer);
 
-			if((sendRes = send(*socketDescriptor, &buffer, sizeof(char)*strlen(buffer) + 1, 0)) == -1) {
+			if((sendRes = send(*params->socketDescriptor, &buffer, sizeof(char)*strlen(buffer) + 1, 0)) == -1) {
 				perror(RED_TEXT_COLOR_CODE "Message Sending Error" RESET_TEXT_COLOR_CODE);
 				printf("\nCOMMUNICATION LOST\n");
 				gatewayEstablished = 0;
