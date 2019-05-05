@@ -12,6 +12,7 @@
 #define MESSAGE_MAX_LENGTH 255
 #define CLIENTS_MAX_COUNT 50
 #define NICKNAME_MAX_LENGTH 15
+#define MAX_FILE_SIZE 1048576
 
 typedef struct Client {
 	int isConnected;
@@ -288,14 +289,14 @@ void* t_nicknamePicking(NicknamePickingParams* params) {
 }
 
 void* t_messageTransmission(struct MessageTransmissionParams* params) {
-	char sendingMsg[MESSAGE_MAX_LENGTH];
 	char msg[MESSAGE_MAX_LENGTH];
+	char receptionBuffer[MAX_FILE_SIZE];
 	int connectionEstablished = 1;
 	int recvRes, sendRes;
 	int i;
 
 	while(connectionEstablished == 1) {
-		if((recvRes = recv(params->senderClient->socketDescriptor, &msg, sizeof(char)*MESSAGE_MAX_LENGTH, 0)) == -1) {
+		if((recvRes = recv(params->senderClient->socketDescriptor, &receptionBuffer, sizeof(char)*MAX_FILE_SIZE, 0)) == -1) {
 			perror("Message Reception Error");
 			connectionEstablished = 0;
 		}
@@ -308,15 +309,17 @@ void* t_messageTransmission(struct MessageTransmissionParams* params) {
 					connectionEstablished = 0;
 				}
 				else {
-					strcpy(sendingMsg, params->senderClient->nickname);
-					strcat(sendingMsg, ": ");
-					strcat(sendingMsg, msg);
+					if(strncmp(receptionBuffer, "\\f", 2) != 0) {
+						strcpy(receptionBuffer, params->senderClient->nickname);
+						strcat(receptionBuffer, ": ");
+						strcat(receptionBuffer, msg);	
+					}
 
 					i = 0;
 
 					while(i < (params->gateway->clientsCount)) {
 						if(i != params->senderClient->index && params->gateway->clients[i]->isConnected == 1) {
-							if((sendRes = send(params->gateway->clients[i]->socketDescriptor, &sendingMsg, sizeof(char)*((int)strlen(sendingMsg) + 1), 0)) == -1) {
+							if((sendRes = send(params->gateway->clients[i]->socketDescriptor, &receptionBuffer, sizeof(char)*((int)strlen(receptionBuffer) + 1), 0)) == -1) {
 								perror("Message Sending Error");
 							}
 							else {

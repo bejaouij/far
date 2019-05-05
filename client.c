@@ -390,7 +390,7 @@ void* t_recvMessages(int* socketDescriptor) {
 			}
 			else {
 				/* File Reception */
-				if(strcmp(receptionType, "\\f") == 0) {
+				if(strncmp(receptionType, "\\f", 2) == 0) {
 					recv(*socketDescriptor, &fileBuffer, MAX_FILE_SIZE, 0);
 
 					if(pthread_create(&fileReceptionThread, NULL, (void*) &t_fileReception, fileBuffer) != 0) {
@@ -399,9 +399,9 @@ void* t_recvMessages(int* socketDescriptor) {
 				}
 				/********************/
 				/* Message reception */
-				else if(strcmp(receptionType, "\\m") == 0) {
+				else {
 					recv(*socketDescriptor, &messageBuffer, MESSAGE_MAX_LENGTH, 0);
-					printf(BRIGHT_BLUE_TEXT_COLOR_CODE "%s\n" RESET_TEXT_COLOR_CODE, messageBuffer);
+					printf(BRIGHT_BLUE_TEXT_COLOR_CODE "%s\n" RESET_TEXT_COLOR_CODE, receptionType);
 				}
 				/********************/
 			}
