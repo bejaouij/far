@@ -12,7 +12,9 @@
 #include <dirent.h>
 
 #define MESSAGE_MAX_LENGTH 256
+#define FILENAME_MAX_LENGTH 100
 #define NICKNAME_MAX_LENGTH 15
+#define MAX_FILE_SIZE 1048576
 
 #define UPLOAD_FILES_DIR_PATH "medias/files/upload"
 
@@ -50,9 +52,22 @@ void tcmd_help();
 /* void -> void
  *
  * Chat command.
- * Allow you to pick a file to send to the gateway
+ * Show the list of sendable files.
  */
 void tcmd_file();
+
+/* &char -> int
+ *
+ * Chat command.
+ * Send the specified file to the gateway.
+ *
+ * @pre: File must exists in the dedicated directory.
+ * @param: - filename: name of the file to send.
+ *         - socketDescriptor: server side socket descriptor.
+ * @return: - -1 if something goes wrong.
+ *          - 0 if everything is okay.
+ */
+int tcmd_fileSending(const char filename[FILENAME_MAX_LENGTH], int socketDescriptor);
 
 /* &Int -> Any
  *
@@ -224,7 +239,8 @@ int nicknamePicking(int socketDescriptor) {
 void tcmd_help() {
 	printf("\\help - Display the list of available commands.\n");
 	printf("\\stop - Disconnect you from the gateway.\n");
-	printf("\\file - Allow you to pick a file to send to the gateway.\n");
+	printf("\\file - Show you the list of sendable files..\n");
+	printf("\\file [filename] - Send to the gateway the specified file.\n");
 }
 
 void tcmd_file() {
@@ -234,7 +250,7 @@ void tcmd_file() {
 	if((uploadDir = opendir(UPLOAD_FILES_DIR_PATH)) != NULL) {
 		int count = 0;
 
-		printf("Select a file to upload by typing its name:\n");
+		printf("Uploadable files:\n");
 
 		while((entryUploadDir = readdir(uploadDir)) != NULL ) {
 			count++;
@@ -254,6 +270,78 @@ void tcmd_file() {
 	else {
 		printf(RED_TEXT_COLOR_CODE "Unable to open \"%s\" directory.\n" RESET_TEXT_COLOR_CODE, UPLOAD_FILES_DIR_PATH);
 	}
+}
+
+int tcmd_fileSending(const char filename[FILENAME_MAX_LENGTH], int socketDescriptor) {
+	int fileFound;
+	DIR* uploadDir;
+	FILE* fileToSend;
+	char buffer[MAX_FILE_SIZE];
+	struct dirent* entryUploadDir;
+
+	if((uploadDir = opendir(UPLOAD_FILES_DIR_PATH)) != NULL) {
+		fileFound = 0;
+
+		while((entryUploadDir = readdir(uploadDir)) != NULL && fileFound == 0) {
+			if(strcmp(filename, entryUploadDir->d_name) == 0) {
+				fileFound = 1;
+			}
+		}
+
+		closedir(uploadDir);
+	}
+	else {
+		printf(RED_TEXT_COLOR_CODE "Unable to open \"%s\" directory.\n" RESET_TEXT_COLOR_CODE, UPLOAD_FILES_DIR_PATH);
+
+		return -1;
+	}
+
+	if(fileFound == 0) {
+		printf(RED_TEXT_COLOR_CODE "The file \"%s/%s\" does not exist.\n" RESET_TEXT_COLOR_CODE, UPLOAD_FILES_DIR_PATH, filename);
+		
+		return -1;
+	}
+	else {
+		char filepath[strlen(UPLOAD_FILES_DIR_PATH) + strlen(filename) + 1];
+		strcpy(filepath, UPLOAD_FILES_DIR_PATH);
+		strcat(filepath, "/");
+		strcat(filepath, filename);
+
+		fileToSend = fopen(filepath, "r");
+
+		if(fileToSend != NULL) {
+			int i = 2;
+			int resSend;
+
+			/* Necessary to distinguish the type of the message. */
+			buffer[0] = '\\';
+			buffer[1] = 'f';
+			/********************/
+
+			while((buffer[i] = fgetc(fileToSend)) != EOF) {
+				i++;
+			}
+
+			if((resSend = send(socketDescriptor, &buffer, i*sizeof(char), 0)) == -1) {
+				perror("File Sending Error");
+				
+				return -1;
+			}
+			else {
+				if(resSend == 0) {
+					return -1;
+				}
+			}
+
+		}
+		else {
+			printf(RED_TEXT_COLOR_CODE "Unable to open \"%s/%s\" file.\n" RESET_TEXT_COLOR_CODE, UPLOAD_FILES_DIR_PATH, filename);
+			
+			return -1;
+		}
+	}
+
+	return 0;
 }
 
 void* t_recvMessages(int* socketDescriptor) {
@@ -283,11 +371,13 @@ void* t_sendMessages(SendMessagesParams* params) {
 	int gatewayEstablished = 1;
 	int sendRes;
 	char buffer[MESSAGE_MAX_LENGTH];
+	char filename[FILENAME_MAX_LENGTH];
 
 	while(gatewayEstablished == 1) {
 		fgets(buffer, 255, stdin);
 		*strchr(buffer, '\n') = '\0'; /* Remove the end of line character */
 
+		/* If the message is a command */
 		if(buffer[0] == '\\') {
 			if(strcmp(buffer, "\\help") == 0) {
 				tcmd_help();
@@ -299,19 +389,53 @@ void* t_sendMessages(SendMessagesParams* params) {
 					perror("Thread Cancelling Error");
 				}
 			}
-			else if(strcmp(buffer, "\\file") == 0) {
-				tcmd_file();
+			else if(strncmp(buffer, "\\file", 5) == 0) {
+				/* No contains argument */
+				if(strlen(buffer) == 5) {
+					tcmd_file();
+				}
+
+				/* Potentially contains arguments */
+				else {
+					int i = 5; /* index in buffer array */
+					int j = 0; /* Index in filename array */
+					int wholeFilenameFound = 0;
+
+					while(buffer[i] != '\0' && wholeFilenameFound == 0) {
+						/* We reached the end of the filename */
+						if(buffer[i] == ' ' && j > 0) {
+							wholeFilenameFound = 1;
+						}
+						/********************/
+						else {
+							if(buffer[i] != ' ' && j < FILENAME_MAX_LENGTH) {
+								filename[j] = buffer[i];
+								j++;
+							}
+						}
+
+						i++;
+					}
+
+					if(j < FILENAME_MAX_LENGTH) {
+						filename[j] = '\0';
+					}
+
+					tcmd_fileSending(filename, *params->socketDescriptor);
+				}
+				/********************/
 			}
 			else {
 				printf(RED_TEXT_COLOR_CODE "Command \"%s\" does not exist. Type \"\\help\" to access commands list.\n" RESET_TEXT_COLOR_CODE, buffer);
 			}
 		}
+		/********************/
 		else {
 			printf(CYAN_TEXT_COLOR_CODE "You: %s\n" RESET_TEXT_COLOR_CODE, buffer);
 
 			if((sendRes = send(*params->socketDescriptor, &buffer, sizeof(char)*strlen(buffer) + 1, 0)) == -1) {
-				perror(RED_TEXT_COLOR_CODE "Message Sending Error" RESET_TEXT_COLOR_CODE);
-				printf("\nCOMMUNICATION LOST\n");
+				perror("Message Sending Error");
+				printf(RED_TEXT_COLOR_CODE "\nCOMMUNICATION LOST\n" RESET_TEXT_COLOR_CODE);
 				gatewayEstablished = 0;
 			}
 			else {
