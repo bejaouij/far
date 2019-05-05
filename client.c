@@ -17,6 +17,7 @@
 #define MAX_FILE_SIZE 1048576
 
 #define UPLOAD_FILES_DIR_PATH "medias/files/upload"
+#define DOWNLOAD_FILES_DIR_PATH "medias/files/download"
 
 #define GREEN_TEXT_COLOR_CODE "\x1b[32m"
 #define RED_TEXT_COLOR_CODE "\x1b[31m"
@@ -97,6 +98,14 @@ void* t_sendMessages(SendMessagesParams* params);
  * @param: params: Structure which store function parameters.
  */
 void* t_fileSending(const FileSendingParams* params);
+
+/* &char -> Any
+ *
+ * File Reception thread routine.
+ *
+ * @param: fileBuffer: Array which contain file content..
+ */
+void* t_fileReception(const char fileBuffer[MAX_FILE_SIZE]);
 
 int main() {
 	int gatewayEstablished = 1;
@@ -335,7 +344,7 @@ int tcmd_fileSending(const char filename[FILENAME_MAX_LENGTH], int socketDescrip
 				i++;
 			}
 
-			if((resSend = send(socketDescriptor, &buffer, i*sizeof(char), 0)) == -1) {
+			if((resSend = send(socketDescriptor, &buffer, (i+1)*sizeof(char), 0)) == -1) {
 				perror("File Sending Error");
 				
 				return -1;
@@ -343,6 +352,9 @@ int tcmd_fileSending(const char filename[FILENAME_MAX_LENGTH], int socketDescrip
 			else {
 				if(resSend == 0) {
 					return -1;
+				}
+				else {
+					printf(GREEN_TEXT_COLOR_CODE "Attachment successfuly sent.\n" RESET_TEXT_COLOR_CODE);
 				}
 			}
 
@@ -360,10 +372,13 @@ int tcmd_fileSending(const char filename[FILENAME_MAX_LENGTH], int socketDescrip
 void* t_recvMessages(int* socketDescriptor) {
 	int gatewayEstablished = 1;
 	int recvRes;
-	char buffer[MESSAGE_MAX_LENGTH];
+	char receptionType[2];
+	char messageBuffer[MESSAGE_MAX_LENGTH];
+	char fileBuffer[MAX_FILE_SIZE];
+	pthread_t fileReceptionThread;
 
 	while(gatewayEstablished == 1) {
-		if((recvRes = recv(*socketDescriptor, &buffer, sizeof(char)*MESSAGE_MAX_LENGTH, 0)) == -1) {
+		if((recvRes = recv(*socketDescriptor, &receptionType, sizeof(char)*2, 0)) == -1) {
 			perror("Message Reception Error");
 			printf(RED_TEXT_COLOR_CODE "COMMUNICATION LOST" RESET_TEXT_COLOR_CODE);
 			gatewayEstablished = 0;
@@ -374,7 +389,21 @@ void* t_recvMessages(int* socketDescriptor) {
 				printf(RED_TEXT_COLOR_CODE "\nCOMMUNICATION LOST\n" RESET_TEXT_COLOR_CODE);
 			}
 			else {
-				printf(BRIGHT_BLUE_TEXT_COLOR_CODE "%s\n" RESET_TEXT_COLOR_CODE, buffer);
+				/* File Reception */
+				if(strcmp(receptionType, "\\f") == 0) {
+					recv(*socketDescriptor, &fileBuffer, MAX_FILE_SIZE, 0);
+
+					if(pthread_create(&fileReceptionThread, NULL, (void*) &t_fileReception, fileBuffer) != 0) {
+						perror("File Reception Thread Creation Error");
+					}
+				}
+				/********************/
+				/* Message reception */
+				else if(strcmp(receptionType, "\\m") == 0) {
+					recv(*socketDescriptor, &messageBuffer, MESSAGE_MAX_LENGTH, 0);
+					printf(BRIGHT_BLUE_TEXT_COLOR_CODE "%s\n" RESET_TEXT_COLOR_CODE, messageBuffer);
+				}
+				/********************/
 			}
 		}
 	}
@@ -470,4 +499,37 @@ void* t_sendMessages(SendMessagesParams* params) {
 
 void* t_fileSending(const FileSendingParams* params) {
 	tcmd_fileSending(params->filename, params->socketDescriptor);
+}
+
+void* t_fileReception(const char fileBuffer[MAX_FILE_SIZE]) {
+	char filepath[strlen(DOWNLOAD_FILES_DIR_PATH) + FILENAME_MAX_LENGTH + 1];
+	FILE* fileReception;
+
+	strcpy(filepath, DOWNLOAD_FILES_DIR_PATH);
+	strcat(filepath, "/");
+	strcat(filepath, "recieve");
+
+	fileReception = fopen(filepath, "w");
+
+	if(fileReception != NULL) {
+		int i = 0;
+
+		while(fileBuffer[i] != EOF && i < MAX_FILE_SIZE) {
+			fputc(fileBuffer[i], fileReception);
+			i++;
+		}
+
+		if(i == MAX_FILE_SIZE) {
+			i--;
+		}
+
+		fputc(EOF, fileReception);
+
+		fclose(fileReception);
+
+		printf(GREEN_TEXT_COLOR_CODE "You recieved an attachment\n" RESET_TEXT_COLOR_CODE);
+	}
+	else {
+		perror("File Reception Opening Error");
+	}
 }
