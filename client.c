@@ -29,6 +29,11 @@ typedef struct SendMessagesParams {
 	pthread_t* recvMessagesThread;
 } SendMessagesParams;
 
+typedef struct FileSendingParams {
+	char filename[FILENAME_MAX_LENGTH];
+	int socketDescriptor;
+} FileSendingParams;
+
 /* int -> int
  *
  * Trigger the nickname picking process once.
@@ -84,6 +89,14 @@ void* t_recvMessages(int* socketDescriptor);
  * @param: params: Structure which store function parameters.
  */
 void* t_sendMessages(SendMessagesParams* params);
+
+/* &FileSendingParams -> Any
+ *
+ * File Sending thread routine.
+ *
+ * @param: params: Structure which store function parameters.
+ */
+void* t_fileSending(const FileSendingParams* params);
 
 int main() {
 	int gatewayEstablished = 1;
@@ -372,6 +385,8 @@ void* t_sendMessages(SendMessagesParams* params) {
 	int sendRes;
 	char buffer[MESSAGE_MAX_LENGTH];
 	char filename[FILENAME_MAX_LENGTH];
+	pthread_t fileSendingThread;
+	FileSendingParams fileSendingParams;
 
 	while(gatewayEstablished == 1) {
 		fgets(buffer, 255, stdin);
@@ -421,7 +436,12 @@ void* t_sendMessages(SendMessagesParams* params) {
 						filename[j] = '\0';
 					}
 
-					tcmd_fileSending(filename, *params->socketDescriptor);
+					strcpy(fileSendingParams.filename, filename);
+					fileSendingParams.socketDescriptor = *params->socketDescriptor;
+
+					if(pthread_create(&fileSendingThread, NULL, (void*) &t_fileSending, &fileSendingParams) != 0) {
+						perror("File Sending Thread Creation Error");
+					}
 				}
 				/********************/
 			}
@@ -446,4 +466,8 @@ void* t_sendMessages(SendMessagesParams* params) {
 			}
 		}
 	}
+}
+
+void* t_fileSending(const FileSendingParams* params) {
+	tcmd_fileSending(params->filename, params->socketDescriptor);
 }
