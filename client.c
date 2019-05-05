@@ -32,6 +32,13 @@
  */
 int nicknamePicking(int socketDescriptor);
 
+/* void -> void
+ *
+ * Chat command.
+ * Display the list of available commands.
+ */
+void tcmd_help();
+
 /* &Int -> Any
  *
  * Reception messages thread routine.
@@ -197,6 +204,11 @@ int nicknamePicking(int socketDescriptor) {
 	}
 }
 
+void tcmd_help() {
+	printf("\\help - Display the list of available commands.\n");
+	printf("\\stop - Disconnect you from the gateway.\n");
+}
+
 void* t_recvMessages(int* socketDescriptor) {
 	int gatewayEstablished = 1;
 	int recvRes;
@@ -228,17 +240,31 @@ void* t_sendMessages(int* socketDescriptor) {
 	while(gatewayEstablished == 1) {
 		fgets(buffer, 255, stdin);
 		*strchr(buffer, '\n') = '\0'; /* Remove the end of line character */
-		printf(CYAN_TEXT_COLOR_CODE "You: %s\n" RESET_TEXT_COLOR_CODE, buffer);
 
-		if((sendRes = send(*socketDescriptor, &buffer, sizeof(char)*strlen(buffer) + 1, 0)) == -1) {
-			perror(RED_TEXT_COLOR_CODE "Message Sending Error" RESET_TEXT_COLOR_CODE);
-			printf("\nCOMMUNICATION LOST\n");
-			gatewayEstablished = 0;
+		if(buffer[0] == '\\') {
+			if(strcmp(buffer, "\\help") == 0) {
+				tcmd_help();
+			}
+			else if(strcmp(buffer, "\\stop") == 0) {
+				gatewayEstablished = 0;
+			}
+			else {
+				printf(RED_TEXT_COLOR_CODE "Command \"%s\" does not exist. Type \"\\help\" to access commands list.\n" RESET_TEXT_COLOR_CODE, buffer);
+			}
 		}
 		else {
-			if(sendRes == 0) {
+			printf(CYAN_TEXT_COLOR_CODE "You: %s\n" RESET_TEXT_COLOR_CODE, buffer);
+
+			if((sendRes = send(*socketDescriptor, &buffer, sizeof(char)*strlen(buffer) + 1, 0)) == -1) {
+				perror(RED_TEXT_COLOR_CODE "Message Sending Error" RESET_TEXT_COLOR_CODE);
+				printf("\nCOMMUNICATION LOST\n");
 				gatewayEstablished = 0;
-				printf(RED_TEXT_COLOR_CODE "\nCOMMUNICATION LOST\n" RESET_TEXT_COLOR_CODE);
+			}
+			else {
+				if(sendRes == 0) {
+					gatewayEstablished = 0;
+					printf(RED_TEXT_COLOR_CODE "\nCOMMUNICATION LOST\n" RESET_TEXT_COLOR_CODE);
+				}
 			}
 		}
 	}
