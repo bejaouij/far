@@ -24,10 +24,17 @@ typedef struct Client {
 	char nickname[NICKNAME_MAX_LENGTH];
 } Client;
 
+typedef struct Room {
+	int maxClientNumber;
+	int clientNumber;
+	char name[ROOM_NAME_MAX_LENGTH];
+	char description[ROOM_DESCRIPTION_MAX_LENGTH];
+	Client* clients[CLIENTS_MAX_COUNT]; /* The number will be limited by the stored "maxClientNumber" value */
+} Room;
+
 typedef struct Gateway {
 	int socketDescriptor;
-	int clientsCount;
-	Client* clients[CLIENTS_MAX_COUNT];
+	Room* rooms[ROOM_MAX_COUNT];
 } Gateway;
 
 typedef struct MessageTransmissionParams {
