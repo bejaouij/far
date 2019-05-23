@@ -126,6 +126,9 @@ int main() {
 				break;
 			case -6:
 				printf(RED_TEXT_COLOR_CODE "Invalid command.\n" RESET_TEXT_COLOR_CODE);
+				break;
+			case -7:
+				printf(RED_TEXT_COLOR_CODE "Invalid room specifications.\n" RESET_TEXT_COLOR_CODE);
 		}
 	} while(nicknameFeedback != 0 && nicknameFeedback != 1);
 	/********************/
@@ -181,9 +184,10 @@ int main() {
 }
 
 void tcmd_help() {
-	printf("\\help                         - Display the list of available commands.\n");
-	printf("\\stop                         - Disconnect you from the gateway.\n");
+	printf("\\help - Display the list of available commands.\n");
+	printf("\\stop - Disconnect you from the gateway.\n");
 	printf("\\join [room_index] [nickname] - Try to access a specific room with a nickname.\n");
+	printf("\\create_room \"[room_name]\" \"[room_description]\" \"[max_client_number]\" - Create a room with the specified specifications. (max_client_number must be greater than 0)");
 }
 
 int nicknamePicking(int socketDescriptor) {
@@ -192,18 +196,22 @@ int nicknamePicking(int socketDescriptor) {
 	char nickname[NICKNAME_MAX_LENGTH];
 	regex_t alphanumReg;
 
-	printf("Join or create a room (type \"\\stop\" to cancel or \"\\help\" to acess the commands list):\n");
+	printf("Join or create a room (type \"\\stop\" to cancel or \"\\help\" to access the commands list):\n");
 	fgets(buffer, (MESSAGE_MAX_LENGTH), stdin);
 	*strchr(buffer, '\n') = '\0';
-
-	if(strcmp("\\stop", buffer) == 0) {
-		return 1;
-	}
 
 	if(strlen(buffer) > MESSAGE_MAX_LENGTH) {
 		return -1;
 	}
 
+	if(strcmp("\\stop", buffer) == 0) {
+		return 1;
+	}
+	if(strcmp("\\help", buffer) == 0) {
+		tcmd_help();
+
+		return 2;
+	}
 	if(strncmp("\\join", buffer, 5) == 0) {
 		if(retrieveArgs(nickname, buffer, 2, ' ') != 0) {
 			return -2;
@@ -245,22 +253,35 @@ int nicknamePicking(int socketDescriptor) {
 			}
 		}
 	}
-	if(strncmp("\\help", buffer, 5) == 0) {
-		tcmd_help();
+	if(strncmp("\\create_room", buffer, 12) == 0) {
+		if((resSend = send(socketDescriptor, &buffer, (strlen(buffer)*sizeof(char) + 1), 0)) == -1) {
+			perror("Room Pick Sending Error");
+			return 1;
+		}
+		else {
+			if(resSend == 0) {
+				return 1;
+			}
+			else {
+				if((resRecv = recv(socketDescriptor, &nicknameFeedback, 1*sizeof(int), 0)) == -1) {
+					perror("Room Pick Reception Error");
+					return 1;
+				}
+				else {
+					if(resRecv == 0) {
+						return 1;
+					}
+					else {
+						return nicknameFeedback;
+					}
+				}
+			}
+		}
 
 		return 2;
 	}
 
 	return -6;
-
-	if(regcomp(&alphanumReg, "^[[:alnum:]]+$", REG_EXTENDED) != 0) {
-		perror("Regex Compilation Error");
-		return 1;
-	}
-
-	if(regexec(&alphanumReg, buffer, 0, NULL, 0) == REG_NOMATCH) {
-		return -2;
-	}
 }
 
 int retrieveArgs(char* argument, char* buffer, int n, char separator) {

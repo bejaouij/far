@@ -141,24 +141,6 @@ int main() {
 	gateway.socketDescriptor = socket(PF_INET, SOCK_STREAM, 0);
 	gateway.roomNumber = 0;
 
-	Room room;
-	room.maxClientNumber = 10;
-	room.clientNumber = 0;
-	strcpy(room.name, "Ouistiti");
-	strcpy(room.description, "Ce projet me pète les burnes");
-
-	gateway.rooms[0] = &room;
-	gateway.roomNumber++;
-
-	Room room2;
-	room2.maxClientNumber = 10;
-	room2.clientNumber = 0;
-	strcpy(room.name, "Ouistitiiiiiiiii");
-	strcpy(room.description, "Ce projet me pète les burnes v2");
-	
-	gateway.rooms[1] = &room2;
-	gateway.roomNumber++;
-
 	if(gateway.socketDescriptor == -1) {
 		perror("Socket Creation Error");
 	}
@@ -278,7 +260,7 @@ int removeClient(Gateway* gateway, Client* client) {
 		gateway->rooms[client->roomIndex]->clientNumber--;
 	}
 	else {
-		/*free(gateway->rooms[client->roomIndex]);*/
+		free(gateway->rooms[client->roomIndex]);
 		gateway->roomNumber--;
 	}
 	
@@ -358,37 +340,81 @@ void* t_nicknamePicking(NicknamePickingParams* params) {
 				gatewayEstablished = 0;
 			}
 			else {
-				if(retrieveArgs(arg, buffer, 1, ' ') != 0) {
-					nicknameFeedback = -4;
-				}
-				else {
-					if(atoi(arg) < params->gateway->roomNumber) {
-						if(params->gateway->rooms[atoi(arg)]->clientNumber >= params->gateway->rooms[atoi(arg)]->maxClientNumber) {
-							nicknameFeedback = -5;
-						}
-						else {
-							retrieveArgs(params->senderClient->nickname, buffer, 2, ' ');
-							params->senderClient->roomIndex = atoi(arg);
-
-							if(nicknameAvailable(params->senderClient, params->gateway) != 1) {
-								nicknameFeedback = -3;
-							}
-							else {
-								if(addClientToRoom(params->senderClient, params->gateway->rooms[atoi(arg)]) == 0) {
-									params->gateway->clientsCount++;
-									params->senderClient->isConnected = 1;
-									nicknameFeedback = 0;
-									nicknamePicked = 1;
-								}
-								else {
-									nicknameFeedback = -5;
-								}
-							}
-						}
-					}
-					else {
+				if(strncmp("\\join", buffer, 5) == 0) {
+					if(retrieveArgs(arg, buffer, 1, ' ') != 0) {
 						nicknameFeedback = -4;
 					}
+					else {
+						if(atoi(arg) < params->gateway->roomNumber) {
+							if(params->gateway->rooms[atoi(arg)]->clientNumber >= params->gateway->rooms[atoi(arg)]->maxClientNumber) {
+								nicknameFeedback = -5;
+							}
+							else {
+								retrieveArgs(params->senderClient->nickname, buffer, 2, ' ');
+								params->senderClient->roomIndex = atoi(arg);
+
+								if(nicknameAvailable(params->senderClient, params->gateway) != 1) {
+									nicknameFeedback = -3;
+								}
+								else {
+									if(addClientToRoom(params->senderClient, params->gateway->rooms[atoi(arg)]) == 0) {
+										params->gateway->clientsCount++;
+										params->senderClient->isConnected = 1;
+										nicknameFeedback = 0;
+										nicknamePicked = 1;
+									}
+									else {
+										nicknameFeedback = -5;
+									}
+								}
+							}
+						}
+						else {
+							nicknameFeedback = -4;
+						}
+					}
+				}
+				else if(strncmp("\\create_room", buffer, 12) == 0) {
+					char roomName[ROOM_NAME_MAX_LENGTH];
+					char roomDescription[ROOM_DESCRIPTION_MAX_LENGTH];
+					char roomMaxClientNumber[2];
+
+					if(retrieveArgs(roomName, buffer, 1, '\"') != 0) {
+						nicknameFeedback = -7;
+					}
+
+					if(nicknameFeedback != -7 && retrieveArgs(roomDescription, buffer, 3, '\"') != 0)  {
+						nicknameFeedback = -7;
+					}
+					
+					if(nicknameFeedback != -7 && retrieveArgs(roomMaxClientNumber, buffer, 5, '\"') != 0) {
+						nicknameFeedback = -7;
+					}
+					if(nicknameFeedback != -7) {
+						if(atoi(roomMaxClientNumber) <= 0 || atoi(roomMaxClientNumber) > CLIENTS_MAX_COUNT) {
+							nicknameFeedback = -7;
+						}
+						else {
+							if(strlen(roomName) < ROOM_NAME_MAX_LENGTH) {
+								roomName[strlen(roomName)] = '\0';
+							}
+							if(strlen(roomDescription) < ROOM_DESCRIPTION_MAX_LENGTH) {
+								roomDescription[strlen(roomDescription)] = '\0';
+							}
+
+							Room* newRoom = (Room*) malloc(sizeof(Room));
+							newRoom->maxClientNumber = atoi(roomMaxClientNumber);
+							newRoom->clientNumber = 0;
+							strcpy(newRoom->name, roomName);
+							strcpy(newRoom->description, roomDescription);
+
+							params->gateway->rooms[params->gateway->roomNumber] = newRoom;
+							params->gateway->roomNumber++;
+
+							nicknameFeedback = 2;
+						}
+					}
+					
 				}
 
 				resSend = send(params->senderClient->socketDescriptor, &nicknameFeedback, 1*sizeof(int), 0);
