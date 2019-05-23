@@ -9,11 +9,15 @@
 #include <pthread.h>
 #include <stdlib.h>
 
-#define MESSAGE_MAX_LENGTH 255
+#define MESSAGE_MAX_LENGTH 1024
 #define CLIENTS_MAX_COUNT 50
 #define NICKNAME_MAX_LENGTH 15
+#define ROOM_MAX_COUNT 3
+#define ROOM_NAME_MAX_LENGTH 30
+#define ROOM_DESCRIPTION_MAX_LENGTH 200
 
 typedef struct Client {
+	int roomIndex;
 	int isConnected;
 	int index;
 	struct sockaddr_in address;
@@ -33,7 +37,9 @@ typedef struct Room {
 } Room;
 
 typedef struct Gateway {
+	int clientsCount;
 	int socketDescriptor;
+	int roomNumber;
 	Room* rooms[ROOM_MAX_COUNT];
 } Gateway;
 
@@ -62,7 +68,7 @@ int closeClientConnection(Client* client);
  * @return: - 0 if everything is okay.
  *          - -1 if something goes wrong.
  */
-int removeClient(Gateway* gateway, int clientIndex);
+int removeClient(Gateway* gateway, Client* client);
 
 /* &Client x &Gateway -> int
  *
@@ -75,6 +81,38 @@ int removeClient(Gateway* gateway, int clientIndex);
  *           - -1 if something goes wrong.
  */
 int nicknameAvailable(Client* client, Gateway* gateway);
+
+/* &char x &char x int x char -> int
+ *
+ * Retrieve and store a specific argument from a string.
+ *
+ * @params: - argument: variable where store the argument.
+ *          - buffer: haystack where search the argument. 
+ *          - n: the index of the wanted argument (start at 0).
+ *          - separator: the argument separator.
+ * @pre: consecutiveSeparator must be equal to 0 or 1.
+ * @post: the argument must be stored in the buffer variable if found.
+ * @return: - 0 if everything is okay.
+ *          - 1 if the argument does not exist.
+ *          - -1 if something goes wrong.
+ */
+int retrieveArgs(char* argument, char* buffer, int n, char separator);
+
+/* &Client x &Room
+ *
+ * Retrieve and store a specific argument from a string.
+ *
+ * @params: - argument: variable where store the argument.
+ *          - buffer: haystack where search the argument. 
+ *          - n: the index of the wanted argument (start at 0).
+ *          - separator: the argument separator.
+ * @pre: consecutiveSeparator must be equal to 0 or 1.
+ * @post: the argument must be stored in the buffer variable if found.
+ * @return: - 0 if everything is okay.
+ *          - 1 if the argument does not exist.
+ *          - -1 if something goes wrong.
+ */
+int addClientToRoom(Client* client, Room* room);
 
 /* *NicknamePickingParams -> Any
  *
@@ -101,6 +139,25 @@ int main() {
 	Gateway gateway;
 	gateway.clientsCount = 0;
 	gateway.socketDescriptor = socket(PF_INET, SOCK_STREAM, 0);
+	gateway.roomNumber = 0;
+
+	Room room;
+	room.maxClientNumber = 10;
+	room.clientNumber = 0;
+	strcpy(room.name, "Ouistiti");
+	strcpy(room.description, "Ce projet me pète les burnes");
+
+	gateway.rooms[0] = &room;
+	gateway.roomNumber++;
+
+	Room room2;
+	room2.maxClientNumber = 10;
+	room2.clientNumber = 0;
+	strcpy(room.name, "Ouistitiiiiiiiii");
+	strcpy(room.description, "Ce projet me pète les burnes v2");
+	
+	gateway.rooms[1] = &room2;
+	gateway.roomNumber++;
 
 	if(gateway.socketDescriptor == -1) {
 		perror("Socket Creation Error");
@@ -123,43 +180,31 @@ int main() {
 	}	
 	/********************/
 
-	/* Make the gateway between both clients to make the communication works */
+	/* Make the gateway between all clients to make the communication works */
 	int resThreadCreation;
-	int i;
 	NicknamePickingParams* params;
 
 	while(1) {
 		if(gateway.clientsCount != CLIENTS_MAX_COUNT) {
-			i = gateway.clientsCount;
-			gateway.clients[i] = (Client*) malloc(sizeof(Client));
-			gateway.clients[i]->isConnected = 0;
-			gateway.clients[i]->index = i;
-			gateway.clients[i]->addressLength = sizeof(struct sockaddr_in);
+			Client* newClient = (Client*) malloc(sizeof(Client));
+			newClient->isConnected = 0;
+			newClient->addressLength = sizeof(struct sockaddr_in);
 
-			if((gateway.clients[i]->socketDescriptor = accept(gateway.socketDescriptor, (struct sockaddr*)&(gateway.clients[i]->address), &(gateway.clients[i]->addressLength))) == -1) {
+			if((newClient->socketDescriptor = accept(gateway.socketDescriptor, (struct sockaddr*)&(newClient->address), &(newClient->addressLength))) == -1) {
 				perror("Client Socket Accepting Error");
 				return -1;
 			}
 
-			/* Useful in the case where clients count value
-		 	 * has been changed during the accepting process. */
-			gateway.clients[gateway.clientsCount] = gateway.clients[i];
-			i = gateway.clientsCount;
-			gateway.clients[i]->index = i;
-			/********************/
-
 			/* Start nickname picking thread routine */
 			params = (NicknamePickingParams*) malloc(sizeof(NicknamePickingParams));
-			params->senderClient = gateway.clients[i];
+			params->senderClient = newClient;
 			params->gateway = &gateway;
 
-			resThreadCreation = pthread_create(&gateway.clients[i]->nicknamePickingThread, NULL, (void*) &t_nicknamePicking, params);
+			resThreadCreation = pthread_create(&newClient->nicknamePickingThread, NULL, (void*) &t_nicknamePicking, params);
 
 			if(resThreadCreation != 0) {
 				perror("Thread Creation Error");
 			}
-
-			gateway.clientsCount++;
 			/********************/
 		}
 	}
@@ -190,40 +235,13 @@ int closeClientConnection(Client* client) {
 	return 0;
 }
 
-int removeClient(Gateway* gateway, int clientIndex) {
-	/* Check whether the client index value is in the range */
-	if(clientIndex < 0 || clientIndex >= gateway->clientsCount) {
-		return -1;
-	}
-	/********************/
-
-	/* Free the client memory */
-	free(gateway->clients[clientIndex]);
-	/********************/
-
-	/* Remove the client from the array */
-	int i;
-
-	for(i = clientIndex; i < (gateway->clientsCount - 1); i++) {
-		gateway->clients[i] = gateway->clients[i + 1];
-		gateway->clients[i]->index = i;
-	}
-
-	gateway->clientsCount--;
-	/********************/
-
-	return 0;
-}
-
 int nicknameAvailable(Client* client, Gateway* gateway) {
 	int nicknameFound = 0;
 	int i = 0;
 
-	while(i < gateway->clientsCount && nicknameFound == 0) {
-		if(client->index != i) {
-			if(strcmp(gateway->clients[i]->nickname, client->nickname) == 0) {
-				nicknameFound = 1;
-			}
+	while(i < gateway->rooms[client->roomIndex]->clientNumber && nicknameFound == 0) {
+		if(strcmp(gateway->rooms[client->roomIndex]->clients[i]->nickname, client->nickname) == 0) {
+			nicknameFound = 1;
 		}
 
 		i++;
@@ -237,15 +255,102 @@ int nicknameAvailable(Client* client, Gateway* gateway) {
 	}
 }
 
+int removeClient(Gateway* gateway, Client* client) {
+	/* Check whether the client index value is in the range */
+	if(client->index < 0 || client->index >= gateway->rooms[client->roomIndex]->clientNumber) {
+		return -1;
+	}
+	/********************/
+
+	/* Free the client memory */
+	free(gateway->rooms[client->roomIndex]->clients[client->index]);
+	/********************/
+
+	/* Remove the client from the array */
+	int i;
+
+	for(i = client->index; i < (gateway->rooms[client->roomIndex]->clientNumber - 1); i++) {
+		gateway->rooms[client->roomIndex]->clients[i] = gateway->rooms[client->roomIndex]->clients[i + 1];
+		gateway->rooms[client->roomIndex]->clients[i]->index = i;
+	}
+
+	if(gateway->rooms[client->roomIndex]->clientNumber > 1) {
+		gateway->rooms[client->roomIndex]->clientNumber--;
+	}
+	else {
+		/*free(gateway->rooms[client->roomIndex]);*/
+		gateway->roomNumber--;
+	}
+	
+	gateway->clientsCount--;
+	/********************/
+
+	return 0;
+}
+
+int addClientToRoom(Client* client, Room* room) {
+	if(room->clientNumber < room->maxClientNumber) {
+		room->clients[room->clientNumber] = client;
+		client->index = room->clientNumber;
+		room->clientNumber++;
+	}
+	else {
+		return 1;
+	}
+
+	return 0;
+}
+
+int retrieveArgs(char* argument, char* buffer, int n, char separator) {
+	int found = 0;
+	int argNumber = 0;
+	int argIndex = 0;
+	int i = 0;
+
+	while(found == 0 && i < strlen(buffer)) {
+		if(buffer[i] == separator) {
+			if(argNumber == n) {
+				found = 1;
+			}
+			else {
+				argNumber++;
+				argIndex = 0;
+			}
+		}
+		else {
+			argument[argIndex] = buffer[i];
+			argIndex++;
+		}
+
+		i++;
+	}
+
+	if(argNumber == n) {
+		found = 1;
+	}
+
+	if(found == 1) {
+		argument[argIndex] = '\0';
+		return 0;
+	}
+	else {
+		return 1;
+	}	
+}
+
 void* t_nicknamePicking(NicknamePickingParams* params) {
+	char buffer[MESSAGE_MAX_LENGTH];
+	char nickname[NICKNAME_MAX_LENGTH];
+	char roomName[ROOM_NAME_MAX_LENGTH];
+	char arg[MESSAGE_MAX_LENGTH];
 	int nicknamePicked = 0;
 	int gatewayEstablished = 1;
-	int nicknameFeedback = 0;
+	int nicknameFeedback;
 	int resThreadCreation, resRecv, resSend;
 
 	while(nicknamePicked == 0 && gatewayEstablished == 1) {
-		if((resRecv = recv(params->senderClient->socketDescriptor, &params->senderClient->nickname, sizeof(char)*MESSAGE_MAX_LENGTH, 0)) == -1) {
-			perror("Nickname Reception Error");
+		if((resRecv = recv(params->senderClient->socketDescriptor, &buffer, sizeof(char)*MESSAGE_MAX_LENGTH, 0)) == -1) {
+			perror("Room Pick Reception Error");
 			gatewayEstablished = 0;
 		}
 		else {
@@ -253,27 +358,42 @@ void* t_nicknamePicking(NicknamePickingParams* params) {
 				gatewayEstablished = 0;
 			}
 			else {
-				if(nicknameAvailable(params->senderClient, params->gateway) == 1) {
-					nicknamePicked = 1;
-					nicknameFeedback = 0;
+				if(retrieveArgs(arg, buffer, 1, ' ') != 0) {
+					nicknameFeedback = -4;
 				}
 				else {
-					nicknamePicked = 0;
-					nicknameFeedback = -3;
-				}
+					if(atoi(arg) < params->gateway->roomNumber) {
+						if(params->gateway->rooms[atoi(arg)]->clientNumber >= params->gateway->rooms[atoi(arg)]->maxClientNumber) {
+							nicknameFeedback = -5;
+						}
+						else {
+							retrieveArgs(params->senderClient->nickname, buffer, 2, ' ');
+							params->senderClient->roomIndex = atoi(arg);
 
-				if((resSend = send(params->senderClient->socketDescriptor, &nicknameFeedback, 1*sizeof(int), 0)) == -1) {
-					perror("Nickname Feedback Sending Error");
-					gatewayEstablished = 0;
-				}
-				else {
-					if(resSend == 0) {
-						gatewayEstablished = 0;
+							if(nicknameAvailable(params->senderClient, params->gateway) != 1) {
+								nicknameFeedback = -3;
+							}
+							else {
+								if(addClientToRoom(params->senderClient, params->gateway->rooms[atoi(arg)]) == 0) {
+									params->gateway->clientsCount++;
+									params->senderClient->isConnected = 1;
+									nicknameFeedback = 0;
+									nicknamePicked = 1;
+								}
+								else {
+									nicknameFeedback = -5;
+								}
+							}
+						}
+					}
+					else {
+						nicknameFeedback = -4;
 					}
 				}
+
+				resSend = send(params->senderClient->socketDescriptor, &nicknameFeedback, 1*sizeof(int), 0);
 			}
 		}
-
 	}
 
 	if(nicknamePicked == 1 && gatewayEstablished == 1) {
@@ -288,7 +408,7 @@ void* t_nicknamePicking(NicknamePickingParams* params) {
 		/********************/
 	}
 	else {
-		removeClient(params->gateway, params->senderClient->index);
+		removeClient(params->gateway, params->senderClient);
 
 		free(params);
 	}
@@ -321,9 +441,9 @@ void* t_messageTransmission(struct MessageTransmissionParams* params) {
 
 					i = 0;
 
-					while(i < (params->gateway->clientsCount)) {
-						if(i != params->senderClient->index && params->gateway->clients[i]->isConnected == 1) {
-							if((sendRes = send(params->gateway->clients[i]->socketDescriptor, &sendingMsg, sizeof(char)*((int)strlen(sendingMsg) + 1), 0)) == -1) {
+					while(i < (params->gateway->rooms[params->senderClient->roomIndex]->clientNumber)) {
+						if(i != params->senderClient->index && params->gateway->rooms[params->senderClient->roomIndex]->clients[i]->isConnected == 1) {
+							if((sendRes = send(params->gateway->rooms[params->senderClient->roomIndex]->clients[i]->socketDescriptor, &sendingMsg, sizeof(char)*((int)strlen(sendingMsg) + 1), 0)) == -1) {
 								perror("Message Sending Error");
 							}
 							else {
@@ -341,7 +461,7 @@ void* t_messageTransmission(struct MessageTransmissionParams* params) {
 	}
 
 	while(closeClientConnection(params->senderClient) == -1) {}
-	while(removeClient(params->gateway, params->senderClient->index) == -1) {}
+	while(removeClient(params->gateway, params->senderClient) == -1) {}
 
 	free(params);
 }

@@ -10,7 +10,7 @@
 #include <pthread.h>
 #include <regex.h>
 
-#define MESSAGE_MAX_LENGTH 256
+#define MESSAGE_MAX_LENGTH 1024
 #define NICKNAME_MAX_LENGTH 15
 
 #define GREEN_TEXT_COLOR_CODE "\x1b[32m"
@@ -27,10 +27,35 @@
  * @returns: - -1 if the nickname is too long.
  *           - -2 if the nickname has a wrong format.
  *           - -3 if the nickname is already taken in the gateway.
+ *           - -4 if the room does not exist.
+ *           - -5 if the room is full.
  *           - 1 if something goes wrong.
  *           - 0 if everything is okay.
  */
 int nicknamePicking(int socketDescriptor);
+
+/* void -> void
+ *
+ * Chat command.
+ * Display the list of available commands.
+ */
+void tcmd_help();
+
+/* &char x &char x int x char[ x int] -> intt
+ *
+ * Retrieve and store a specific argument from a string.
+ *
+ * @params: - argument: variable where store the argument.
+ *          - buffer: haystack where search the argument. 
+ *          - n: the index of the wanted argument (start at 0).
+ *          - separator: the argument separator.
+ * @pre: consecutiveSeparator must be equal to 0 or 1.
+ * @post: the argument must be stored in the buffer variable if found.
+ * @return: - 0 if everything is okay.
+ *          - 1 if the argument does not exist.
+ *          - -1 if something goes wrong.
+ */
+int retrieveArgs(char* argument, char* buffer, int n, char separator);
 
 /* &Int -> Any
  *
@@ -66,9 +91,9 @@ int main() {
 		perror("Address Conversion Error");
 	}
 
-        socklen_t IgA = sizeof(struct sockaddr_in);
+    socklen_t IgA = sizeof(struct sockaddr_in);
 
-       	if(connect(socketDescriptor, (struct sockaddr*) &adServ, IgA) == -1) {
+    if(connect(socketDescriptor, (struct sockaddr*) &adServ, IgA) == -1) {
 		perror("Connection Error");
 	}
 	/********************/
@@ -92,6 +117,11 @@ int main() {
 			case -3:
 				printf(RED_TEXT_COLOR_CODE "This nickname is already taken.\n" RESET_TEXT_COLOR_CODE);
 				break;
+			case -4:
+				printf(RED_TEXT_COLOR_CODE "This room does not exist.\n" RESET_TEXT_COLOR_CODE);
+				break;
+			case -5:
+				printf(RED_TEXT_COLOR_CODE "This room is full.\n" RESET_TEXT_COLOR_CODE);
 		}
 	} while(nicknameFeedback != 0 && nicknameFeedback != 1);
 	/********************/
@@ -136,31 +166,79 @@ int main() {
 	/********************/
 
 	/* Close the server side socket */
-        if(close(socketDescriptor) == -1) {
+    if(close(socketDescriptor) == -1) {
 		perror("Socket Closing Error");
 	}
 
 	printf(RED_TEXT_COLOR_CODE "CONNECTION CLOSED\n" RESET_TEXT_COLOR_CODE);
 	/********************/
 
-        return 0;
+    return 0;
+}
+
+void tcmd_help() {
+	printf("\\help - Display the list of available commands.\n");
+	printf("\\stop - Disconnect you from the gateway.\n");
 }
 
 int nicknamePicking(int socketDescriptor) {
 	int resSend, resRecv, nicknameFeedback;
-	char nickname[MESSAGE_MAX_LENGTH];
+	char buffer[MESSAGE_MAX_LENGTH];
+	char nickname[NICKNAME_MAX_LENGTH];
 	regex_t alphanumReg;
 
-	printf("Pick a nickname (type \"\\stop\" to cancel):\n");
-	fgets(nickname, (MESSAGE_MAX_LENGTH), stdin);
-	*strchr(nickname, '\n') = '\0';
+	printf("Join or create a room (type \"\\stop\" to cancel or \"\\help\" to acess the commands list):\n");
+	fgets(buffer, (MESSAGE_MAX_LENGTH), stdin);
+	*strchr(buffer, '\n') = '\0';
 
-	if(strcmp("\\stop", nickname) == 0) {
+	if(strcmp("\\stop", buffer) == 0) {
 		return 1;
 	}
 
-	if(strlen(nickname) > NICKNAME_MAX_LENGTH) {
+	if(strlen(buffer) > MESSAGE_MAX_LENGTH) {
 		return -1;
+	}
+
+	if(strncmp("\\join", buffer, 5) == 0) {
+		if(retrieveArgs(nickname, buffer, 2, ' ') != 0) {
+			return -2;
+		}
+		else {
+			/* CHeck the nickname */
+			if(regcomp(&alphanumReg, "^[[:alnum:]]+$", REG_EXTENDED) != 0) {
+				perror("Regex Compilation Error");
+				return 1;
+			}
+
+			if(regexec(&alphanumReg, nickname, 0, NULL, 0) == REG_NOMATCH) {
+				return -2;
+			}
+			/********************/
+			
+			if((resSend = send(socketDescriptor, &buffer, (strlen(buffer)*sizeof(char) + 1), 0)) == -1) {
+				perror("Room Pick Sending Error");
+				return 1;
+			}
+			else {
+				if(resSend == 0) {
+					return 1;
+				}
+				else {
+					if((resRecv = recv(socketDescriptor, &nicknameFeedback, 1*sizeof(int), 0)) == -1) {
+						perror("Room Pick Reception Error");
+						return 1;
+					}
+					else {
+						if(resRecv == 0) {
+							return 1;
+						}
+						else {
+							return nicknameFeedback;
+						}
+					}
+				}
+			}
+		}
 	}
 
 	if(regcomp(&alphanumReg, "^[[:alnum:]]+$", REG_EXTENDED) != 0) {
@@ -168,33 +246,46 @@ int nicknamePicking(int socketDescriptor) {
 		return 1;
 	}
 
-	if(regexec(&alphanumReg, nickname, 0, NULL, 0) == REG_NOMATCH) {
+	if(regexec(&alphanumReg, buffer, 0, NULL, 0) == REG_NOMATCH) {
 		return -2;
 	}
+}
 
-	if((resSend = send(socketDescriptor, &nickname, (strlen(nickname)*sizeof(char) + 1), 0)) == -1) {
-		perror("Nickname Sending Error");
-		return 1;
-	}
-	else {
-		if(resSend == 0) {
-			return 1;
-		}
-		else {
-			if((resRecv = recv(socketDescriptor, &nicknameFeedback, 1*sizeof(int), 0)) == -1) {
-				perror("Nickname Feedback Reception Error");
-				return 1;
+int retrieveArgs(char* argument, char* buffer, int n, char separator) {
+	int found = 0;
+	int argNumber = 0;
+	int argIndex = 0;
+	int i = 0;
+
+	while(found == 0 && i < strlen(buffer)) {
+		if(buffer[i] == separator) {
+			if(argNumber == n) {
+				found = 1;
 			}
 			else {
-				if(resRecv == 0) {
-					return 1;
-				}
-				else {
-					return nicknameFeedback;
-				}
+				argNumber++;
+				argIndex = 0;
 			}
 		}
+		else {
+			argument[argIndex] = buffer[i];
+			argIndex++;
+		}
+
+		i++;
 	}
+
+	if(argNumber == n) {
+		found = 1;
+	}
+
+	if(found == 1) {
+		argument[argIndex] = '\0';
+		return 0;
+	}
+	else {
+		return 1;
+	}	
 }
 
 void* t_recvMessages(int* socketDescriptor) {
