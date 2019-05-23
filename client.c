@@ -75,7 +75,6 @@ int main() {
 
 	/* Nickname picking */
 	int nicknameFeedback;
-	char listchannel[MESSAGE_MAX_LENGTH];  // peut-être soucis au niveau de la taille des noms des salons 
 
 	do {
 		nicknameFeedback = nicknamePicking(socketDescriptor);
@@ -84,6 +83,8 @@ int main() {
 			case 1:
 				gatewayEstablished = 0;
 				break;
+			case 2:
+				break;	
 			case -1:
 				printf(RED_TEXT_COLOR_CODE "Your nickname cannot exceed %i characters.\n" RESET_TEXT_COLOR_CODE, NICKNAME_MAX_LENGTH);
 				break;
@@ -93,11 +94,6 @@ int main() {
 			case -3:
 				printf(RED_TEXT_COLOR_CODE "This nickname is already taken.\n" RESET_TEXT_COLOR_CODE);
 				break;
-			case -4:
-				printf(GREEN_TEXT_COLOR_CODE "Here is the list of Rooms.\n" RESET_TEXT_COLOR_CODE);
-				int resChanell = recv(socketDescriptor, &listchannel, 1*sizeof(int), 0);
-				printf("%s\n", listchannel);
-			break;
 		}
 	} while(nicknameFeedback != 0 && nicknameFeedback != 1);
 	/********************/
@@ -154,7 +150,7 @@ int main() {
 
 int nicknamePicking(int socketDescriptor) {
 	int resSend, resRecv, nicknameFeedback;
-	char nickname[MESSAGE_MAX_LENGTH];
+	char nickname[MESSAGE_MAX_LENGTH], listchannel[MESSAGE_MAX_LENGTH];
 	regex_t alphanumReg;
 
 	printf("Pick a nickname (type \"\\stop\" to cancel):\n");
@@ -166,7 +162,11 @@ int nicknamePicking(int socketDescriptor) {
 	}
 
 	if(strcmp("\\rooms", nickname) == 0) {
-		return -4;
+		int resSendRooms = send(socketDescriptor, &nickname, strlen(nickname), 0);
+		int resChanell = recv(socketDescriptor, &listchannel, 1*sizeof(int), 0);
+		printf(GREEN_TEXT_COLOR_CODE "Here is the list of Rooms.\n" RESET_TEXT_COLOR_CODE);
+		printf("%s\n", listchannel);
+		return 2;
 	}
 
 	if(strlen(nickname) > NICKNAME_MAX_LENGTH) {
