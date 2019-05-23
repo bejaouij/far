@@ -329,8 +329,10 @@ void* t_nicknamePicking(NicknamePickingParams* params) {
 	int gatewayEstablished = 1;
 	int nicknameFeedback;
 	int resThreadCreation, resRecv, resSend;
+	int sendFeedback;
 
 	while(nicknamePicked == 0 && gatewayEstablished == 1) {
+		sendFeedback = 1;
 		if((resRecv = recv(params->senderClient->socketDescriptor, &buffer, sizeof(char)*MESSAGE_MAX_LENGTH, 0)) == -1) {
 			perror("Room Pick Reception Error");
 			gatewayEstablished = 0;
@@ -375,21 +377,32 @@ void* t_nicknamePicking(NicknamePickingParams* params) {
 					}
 				}
 				else if(strncmp("\\create_room", buffer, 12) == 0) {
-					char roomName[ROOM_NAME_MAX_LENGTH];
-					char roomDescription[ROOM_DESCRIPTION_MAX_LENGTH];
-					char roomMaxClientNumber[2];
+					char roomName[MESSAGE_MAX_LENGTH];
+					char roomDescription[MESSAGE_MAX_LENGTH];
+					char roomMaxClientNumber[MESSAGE_MAX_LENGTH];
 
 					if(retrieveArgs(roomName, buffer, 1, '\"') != 0) {
 						nicknameFeedback = -7;
+					}
+					else {
+						if(strlen(roomName) == 0) {
+							nicknameFeedback = -7;
+						}
 					}
 
 					if(nicknameFeedback != -7 && retrieveArgs(roomDescription, buffer, 3, '\"') != 0)  {
 						nicknameFeedback = -7;
 					}
+					else {
+						if(strlen(roomDescription) == 0) {
+							nicknameFeedback = -7;
+						}
+					}
 					
 					if(nicknameFeedback != -7 && retrieveArgs(roomMaxClientNumber, buffer, 5, '\"') != 0) {
 						nicknameFeedback = -7;
 					}
+
 					if(nicknameFeedback != -7) {
 						if(atoi(roomMaxClientNumber) <= 0 || atoi(roomMaxClientNumber) > CLIENTS_MAX_COUNT) {
 							nicknameFeedback = -7;
@@ -414,10 +427,49 @@ void* t_nicknamePicking(NicknamePickingParams* params) {
 							nicknameFeedback = 2;
 						}
 					}
+				}
+				else if(strcmp("\\rooms", buffer) == 0) {
+					int i;
+
+					strcpy(buffer, "");
+
+					if(params->gateway->roomNumber == 0) {
+						strcpy(buffer, "No room found.\n\0");
+					}
+					else {
+						for(i = 0; i < params->gateway->roomNumber; i++) {
+							char tmp[ROOM_DESCRIPTION_MAX_LENGTH];
+
+							sprintf(tmp, "%i", i);
+							strcat(buffer, tmp);
+
+							strcat(buffer, " - ");
+							strcat(buffer, params->gateway->rooms[i]->name);
+
+							strcat(buffer, " (");
+
+							sprintf(tmp, "%i", params->gateway->rooms[i]->clientNumber);
+							strcat(buffer, tmp);
+
+							strcat(buffer, "/");
+
+							sprintf(tmp, "%i", params->gateway->rooms[i]->maxClientNumber);
+							strcat(buffer, tmp);
+
+							strcat(buffer, ")\n");
+							strcat(buffer, params->gateway->rooms[i]->description);
+
+							strcat(buffer, "\n\n");
+						}
+					}
 					
+					resSend = send(params->senderClient->socketDescriptor, &buffer, strlen(buffer)*sizeof(char) + 1, 0);
+					sendFeedback = 0;
 				}
 
-				resSend = send(params->senderClient->socketDescriptor, &nicknameFeedback, 1*sizeof(int), 0);
+				if(sendFeedback == 1) {
+					resSend = send(params->senderClient->socketDescriptor, &nicknameFeedback, 1*sizeof(int), 0);
+				}
 			}
 		}
 	}

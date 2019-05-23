@@ -188,6 +188,7 @@ void tcmd_help() {
 	printf("\\stop - Disconnect you from the gateway.\n");
 	printf("\\join [room_index] [nickname] - Try to access a specific room with a nickname.\n");
 	printf("\\create_room \"[room_name]\" \"[room_description]\" \"[max_client_number]\" - Create a room with the specified specifications. (max_client_number must be greater than 0)");
+	printf("\\rooms - Retrieve the rooms list.");
 }
 
 int nicknamePicking(int socketDescriptor) {
@@ -273,6 +274,35 @@ int nicknamePicking(int socketDescriptor) {
 					}
 					else {
 						return nicknameFeedback;
+					}
+				}
+			}
+		}
+
+		return 2;
+	}
+	if(strcmp("\\rooms", buffer) == 0) {
+		if((resSend = send(socketDescriptor, &buffer, (strlen(buffer)*sizeof(char) + 1), 0)) == -1) {
+			perror("Room Pick Sending Error");
+			return 1;
+		}
+		else {
+			if(resSend == 0) {
+				return 1;
+			}
+			else {
+				if((resRecv = recv(socketDescriptor, &buffer, MESSAGE_MAX_LENGTH*sizeof(char), 0)) == -1) {
+					perror("Room Pick Reception Error");
+					return 1;
+				}
+				else {
+					if(resRecv == 0) {
+						return 1;
+					}
+					else {
+						printf("%s\n", buffer);
+
+						return 2;
 					}
 				}
 			}
