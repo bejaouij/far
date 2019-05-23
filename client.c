@@ -29,6 +29,7 @@
  *           - -3 if the nickname is already taken in the gateway.
  *           - -4 if the room does not exist.
  *           - -5 if the room is full.
+ *           - 2 if nothing has been done.
  *           - 1 if something goes wrong.
  *           - 0 if everything is okay.
  */
@@ -122,6 +123,9 @@ int main() {
 				break;
 			case -5:
 				printf(RED_TEXT_COLOR_CODE "This room is full.\n" RESET_TEXT_COLOR_CODE);
+				break;
+			case -6:
+				printf(RED_TEXT_COLOR_CODE "Invalid command.\n" RESET_TEXT_COLOR_CODE);
 		}
 	} while(nicknameFeedback != 0 && nicknameFeedback != 1);
 	/********************/
@@ -177,8 +181,9 @@ int main() {
 }
 
 void tcmd_help() {
-	printf("\\help - Display the list of available commands.\n");
-	printf("\\stop - Disconnect you from the gateway.\n");
+	printf("\\help                         - Display the list of available commands.\n");
+	printf("\\stop                         - Disconnect you from the gateway.\n");
+	printf("\\join [room_index] [nickname] - Try to access a specific room with a nickname.\n");
 }
 
 int nicknamePicking(int socketDescriptor) {
@@ -240,6 +245,13 @@ int nicknamePicking(int socketDescriptor) {
 			}
 		}
 	}
+	if(strncmp("\\help", buffer, 5) == 0) {
+		tcmd_help();
+
+		return 2;
+	}
+
+	return -6;
 
 	if(regcomp(&alphanumReg, "^[[:alnum:]]+$", REG_EXTENDED) != 0) {
 		perror("Regex Compilation Error");
