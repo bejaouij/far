@@ -305,11 +305,12 @@ void* t_messageTransmission(struct MessageTransmissionParams* params) {
 				connectionEstablished = 0;
 			}
 			else {
-				if(strcmp(msg, "fin") == 0) {
+				if(strcmp(receptionBuffer, "fin") == 0) {
 					connectionEstablished = 0;
 				}
 				else {
 					if(strncmp(receptionBuffer, "\\f", 2) != 0) {
+						strcpy(msg, receptionBuffer);
 						strcpy(receptionBuffer, params->senderClient->nickname);
 						strcat(receptionBuffer, ": ");
 						strcat(receptionBuffer, msg);	
